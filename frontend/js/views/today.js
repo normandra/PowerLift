@@ -5,7 +5,7 @@
 import { api } from "../api.js";
 import { openBodyweightModal, openCreateBlockModal, openLogWorkoutModal } from "../modals.js";
 import { openShareModal } from "../share.js";
-import { escapeHtml, fmtKg, showToast, state, statusBadge } from "../state.js";
+import { companionArtHtml, escapeHtml, fmtKg, renderCompanionPillGroupHtml, showToast, state, statusBadge } from "../state.js";
 
 export function renderTodayView(containerEl, actions) {
   const dash = state.cache.dashboard;
@@ -42,10 +42,13 @@ export function renderTodayView(containerEl, actions) {
       (c) => `
       <div class="lift-card">
         <div class="row-between">
-          <div>
-            <div style="font-weight:700;font-size:16px;">${escapeHtml(c.name)}</div>
-            <div class="dim small">
-              ${c.today_target ? escapeHtml(c.today_target.phase) : "No target configured"}
+          <div class="lift-card-head">
+            ${companionArtHtml(c.slug || c.name, "lg")}
+            <div style="min-width:0;">
+              <div style="font-weight:700;font-size:16px;">${escapeHtml(c.name)}</div>
+              <div class="dim small">
+                ${c.today_target ? escapeHtml(c.today_target.phase) : "No target configured"}
+              </div>
             </div>
           </div>
           ${
@@ -191,9 +194,12 @@ export function renderTodayView(containerEl, actions) {
     ${setupPlanBanner}
 
     <section>
-      <div class="section-head">
-        <h3 class="section-title">Today's Targets</h3>
-        <span class="small muted">Sparse logging — train on your schedule</span>
+      <div class="section-head" style="flex-wrap:wrap;gap:8px;">
+        <div>
+          <h3 class="section-title" style="margin:0;">Today's Targets</h3>
+          <span class="small muted">Sparse logging — train on your schedule</span>
+        </div>
+        ${renderCompanionPillGroupHtml(state.companion)}
       </div>
       <div class="grid-2">${todayCardsHtml}</div>
     </section>
@@ -260,5 +266,11 @@ export function renderTodayView(containerEl, actions) {
   const setupBtn = containerEl.querySelector("#t-setup-plan");
   if (setupBtn) {
     setupBtn.addEventListener("click", () => actions.switchTab("setup"));
+  }
+
+  for (const btn of containerEl.querySelectorAll("[data-companion-pick]")) {
+    btn.addEventListener("click", () => {
+      actions.setCompanion(btn.getAttribute("data-companion-pick"));
+    });
   }
 }

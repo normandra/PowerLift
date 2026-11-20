@@ -5,7 +5,7 @@
 import { IS_LOCAL_MODE, api } from "./api.js";
 import { openLogWorkoutModal } from "./modals.js";
 import { openShareModal } from "./share.js";
-import { applyTheme, avatarHtml, escapeHtml, renderThemePillGroupHtml, state } from "./state.js";
+import { applyCompanion, applyTheme, avatarHtml, escapeHtml, renderCompanionPillGroupHtml, renderThemePillGroupHtml, state } from "./state.js";
 import { renderAuthView } from "./views/auth.js";
 import { renderProgressView } from "./views/progress.js";
 import { renderSetupView } from "./views/setup.js";
@@ -86,6 +86,7 @@ function renderShell() {
         <nav class="sidebar-nav">${navBtnsHtml}</nav>
         <div class="sidebar-footer">
           ${renderThemePillGroupHtml(state.theme)}
+          ${renderCompanionPillGroupHtml(state.companion)}
           <div class="row-inline">
             ${avatarHtml(state.user.display_name, state.user.avatar_color)}
             <div style="min-width:0;flex:1;">
@@ -190,6 +191,12 @@ function renderShell() {
     });
   }
 
+  for (const btn of root.querySelectorAll(".sidebar [data-companion-pick]")) {
+    btn.addEventListener("click", () => {
+      actions.setCompanion(btn.getAttribute("data-companion-pick"));
+    });
+  }
+
   renderCurrentTab();
 }
 
@@ -213,10 +220,15 @@ function renderCurrentTab() {
 const actions = {
   switchTab(tabId) {
     state.activeTab = tabId;
+    window.scrollTo(0, 0);
     renderCurrentTab();
   },
   setTheme(themeId) {
     applyTheme(themeId);
+    renderShell();
+  },
+  setCompanion(companionId) {
+    applyCompanion(companionId);
     renderShell();
   },
   refreshShell() {

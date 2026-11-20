@@ -3,7 +3,7 @@
  */
 
 import { api } from "./api.js";
-import { epleyClient, escapeHtml, fmtKg, mroundClient, showToast, state, todayIso } from "./state.js";
+import { companionArtHtml, epleyClient, escapeHtml, fmtKg, mroundClient, showToast, state, todayIso } from "./state.js";
 
 export function closeModal() {
   const root = document.getElementById("modal-root");
@@ -151,11 +151,18 @@ export function openLogWorkoutModal(preselectedExerciseId = null, onSaved = null
         const inc = card?.increment || 2.5;
         const tVal = computeClientDayTarget(card, dateIn.value || todayIso());
 
+        const selectedExObj = exercises.find((e) => String(e.id) === String(exId));
+        const art = companionArtHtml(card?.slug || card?.name || selectedExObj?.name || "", "md");
         if (card && card.has_target && card.today_target) {
           banner.innerHTML = `
-            <div class="row-between">
-              <span><strong>${escapeHtml(card.name)}</strong> target: <strong style="color:var(--mint)">${escapeHtml(fmtKg(tVal))}</strong></span>
-              <span class="muted">${escapeHtml(card.today_target.prescription)}</span>
+            <div class="row-between" style="gap:10px;">
+              <div class="row-inline" style="gap:10px;min-width:0;">
+                ${art}
+                <div style="min-width:0;">
+                  <div><strong>${escapeHtml(card.name)}</strong> target: <strong style="color:var(--mint)">${escapeHtml(fmtKg(tVal))}</strong></div>
+                  <div class="muted">${escapeHtml(card.today_target.prescription)}</div>
+                </div>
+              </div>
             </div>
           `;
           quickBtns.innerHTML = `
@@ -171,7 +178,12 @@ export function openLogWorkoutModal(preselectedExerciseId = null, onSaved = null
             });
           }
         } else {
-          banner.innerHTML = `<span class="muted">No target configured for this lift yet (still logs normally!).</span>`;
+          banner.innerHTML = `
+            <div class="row-inline" style="gap:10px;">
+              ${art}
+              <span class="muted">No target configured for ${escapeHtml(card?.name || selectedExObj?.name || "this lift")} yet (still logs normally!).</span>
+            </div>
+          `;
           quickBtns.innerHTML = "";
         }
 

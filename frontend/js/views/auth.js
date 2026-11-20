@@ -5,7 +5,7 @@
  */
 
 import { IS_LOCAL_MODE, api } from "../api.js";
-import { applyTheme, escapeHtml, renderThemePillGroupHtml, showToast, state } from "../state.js";
+import { applyCompanion, applyTheme, escapeHtml, renderCompanionPillGroupHtml, renderThemePillGroupHtml, showToast, state } from "../state.js";
 
 const SWATCHES = ["#FF6B57", "#3B82F6", "#F472B6", "#2DD4BF", "#FBBF24", "#A78BFA"];
 
@@ -46,6 +46,11 @@ export function renderAuthView(containerEl, onAuthenticated) {
             ${renderThemePillGroupHtml(state.theme)}
           </div>
 
+          <div class="form-field">
+            <label>Lifting Companion</label>
+            ${renderCompanionPillGroupHtml(state.companion)}
+          </div>
+
           <div class="grid-2">
             <button type="button" class="btn btn-primary" id="btn-local-start">Start Fresh</button>
             <button type="button" class="btn btn-mint" id="btn-local-demo">Try Sample Block</button>
@@ -79,6 +84,13 @@ export function renderAuthView(containerEl, onAuthenticated) {
     for (const btn of containerEl.querySelectorAll("[data-theme-pick]")) {
       btn.addEventListener("click", () => {
         applyTheme(btn.getAttribute("data-theme-pick"));
+        renderLocalWelcome();
+      });
+    }
+
+    for (const btn of containerEl.querySelectorAll("[data-companion-pick]")) {
+      btn.addEventListener("click", () => {
+        applyCompanion(btn.getAttribute("data-companion-pick"));
         renderLocalWelcome();
       });
     }

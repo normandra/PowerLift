@@ -4,7 +4,7 @@
 
 import { IS_LOCAL_MODE, api } from "../api.js";
 import { openCreateBlockModal } from "../modals.js";
-import { THEMES, escapeHtml, fmtKg, showToast, state, todayIso } from "../state.js";
+import { THEMES, escapeHtml, fmtKg, renderCompanionPickerCardsHtml, showToast, state, todayIso } from "../state.js";
 
 function defaultWeightsForSlug(slug) {
   if (slug === "squat") return { start: 60, goal: 120, inc: 2.5 };
@@ -42,6 +42,13 @@ export function renderSetupView(containerEl, actions) {
             </button>
           `
         ).join("")}
+      </div>
+      <div style="margin-top:4px;">
+        <div class="row-between" style="margin-bottom:8px;">
+          <span style="font-weight:700;font-size:13.5px;">Lifting Companion</span>
+          <span class="small muted">Cute guide on Squat, Bench &amp; Deadlift</span>
+        </div>
+        ${renderCompanionPickerCardsHtml(state.companion)}
       </div>
     </section>
   `;
@@ -263,6 +270,12 @@ export function renderSetupView(containerEl, actions) {
   for (const btn of containerEl.querySelectorAll("[data-theme-pick]")) {
     btn.addEventListener("click", () => {
       actions.setTheme(btn.getAttribute("data-theme-pick"));
+    });
+  }
+
+  for (const btn of containerEl.querySelectorAll("[data-companion-pick]")) {
+    btn.addEventListener("click", () => {
+      actions.setCompanion(btn.getAttribute("data-companion-pick"));
     });
   }
 

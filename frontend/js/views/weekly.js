@@ -3,7 +3,7 @@
  */
 
 import { openShareModal } from "../share.js";
-import { escapeHtml, fmtKg, state, statusBadge } from "../state.js";
+import { companionArtHtml, escapeHtml, fmtKg, state, statusBadge } from "../state.js";
 
 export function renderWeeklyView(containerEl, actions) {
   const wk = state.cache.weekly;
@@ -23,7 +23,7 @@ export function renderWeeklyView(containerEl, actions) {
     .map(
       (ex) => `
       <tr>
-        <td><strong>${escapeHtml(ex.exercise_name)}</strong></td>
+        <td><div class="row-inline" style="gap:8px;">${companionArtHtml(ex.exercise_name, "sm")}<strong>${escapeHtml(ex.exercise_name)}</strong></div></td>
         <td class="num muted">${ex.week_target != null ? escapeHtml(fmtKg(ex.week_target)) : "—"}</td>
         <td class="num">${ex.best_working_weight != null ? `<strong>${escapeHtml(fmtKg(ex.best_working_weight))}</strong>` : "—"}</td>
         <td class="num muted">${ex.best_one_rm != null ? escapeHtml(fmtKg(ex.best_one_rm)) : "—"}</td>

@@ -8,8 +8,16 @@ export const THEMES = [
   { id: "pink", label: "Pink", primary: "#F472B6", secondary: "#F9A8D4", metaColor: "#140912" },
 ];
 
+export const COMPANIONS = [
+  { id: "cat", label: "Cat", preview: "./assets/companions/cat-squat.png" },
+  { id: "dog", label: "Dog", preview: "./assets/companions/dog-squat.png" },
+  { id: "gorilla", label: "Gorilla", preview: "./assets/companions/gorilla-squat.png" },
+];
+
 const VALID_THEME_IDS = new Set(THEMES.map((t) => t.id));
+const VALID_COMPANION_IDS = new Set(COMPANIONS.map((c) => c.id));
 const initialTheme = localStorage.getItem("pairlift_theme");
+const initialCompanion = localStorage.getItem("pairlift_companion");
 
 export const state = {
   user: null,
@@ -18,6 +26,7 @@ export const state = {
   activeBlockDetail: null,
   activeTab: "today",
   theme: VALID_THEME_IDS.has(initialTheme) ? initialTheme : "default",
+  companion: VALID_COMPANION_IDS.has(initialCompanion) ? initialCompanion : "cat",
   selectedWeek: null,
   selectedChartSlug: null,
   showOneRmOverlay: true,
@@ -28,6 +37,69 @@ export const state = {
     charts: null,
   },
 };
+
+export function applyCompanion(companionId) {
+  const safeId = VALID_COMPANION_IDS.has(companionId) ? companionId : "cat";
+  state.companion = safeId;
+  localStorage.setItem("pairlift_companion", safeId);
+  return safeId;
+}
+
+export function canonicalLiftKey(slugOrName) {
+  const s = String(slugOrName || "").trim().toLowerCase();
+  if (s.includes("squat")) return "squat";
+  if (s.includes("bench")) return "bench";
+  if (s.includes("deadlift")) return "deadlift";
+  return null;
+}
+
+export function companionImageSrc(slugOrName, companionId = state.companion) {
+  const liftKey = canonicalLiftKey(slugOrName);
+  if (!liftKey) return null;
+  const safeId = VALID_COMPANION_IDS.has(companionId) ? companionId : "cat";
+  return `./assets/companions/${safeId}-${liftKey}.png`;
+}
+
+export function companionArtHtml(slugOrName, size = "lg", companionId = state.companion) {
+  const src = companionImageSrc(slugOrName, companionId);
+  if (!src) return "";
+  const compObj = COMPANIONS.find((c) => c.id === (VALID_COMPANION_IDS.has(companionId) ? companionId : "cat"));
+  const liftKey = canonicalLiftKey(slugOrName);
+  const alt = `${compObj ? compObj.label : "Cat"} ${liftKey || ""}`.trim();
+  return `<img class="companion-art companion-art-${escapeHtml(size)}" src="${escapeHtml(src)}" alt="${escapeHtml(alt)}" loading="lazy" />`;
+}
+
+export function renderCompanionPillGroupHtml(activeCompanionId = state.companion) {
+  const active = VALID_COMPANION_IDS.has(activeCompanionId) ? activeCompanionId : "cat";
+  return `
+    <div class="companion-pill-group" role="group" aria-label="Lifting companion">
+      ${COMPANIONS.map(
+        (c) => `
+          <button type="button" class="companion-pill-btn ${c.id === active ? "active" : ""}" data-companion-pick="${escapeHtml(c.id)}" title="${escapeHtml(c.label)} companion">
+            <img src="${escapeHtml(c.preview)}" alt="" />
+            <span>${escapeHtml(c.label)}</span>
+          </button>
+        `
+      ).join("")}
+    </div>
+  `;
+}
+
+export function renderCompanionPickerCardsHtml(activeCompanionId = state.companion) {
+  const active = VALID_COMPANION_IDS.has(activeCompanionId) ? activeCompanionId : "cat";
+  return `
+    <div class="companion-picker" role="radiogroup" aria-label="Lifting companion">
+      ${COMPANIONS.map(
+        (c) => `
+          <button type="button" class="companion-card ${c.id === active ? "active" : ""}" data-companion-pick="${escapeHtml(c.id)}" role="radio" aria-checked="${c.id === active}">
+            <img src="${escapeHtml(c.preview)}" alt="${escapeHtml(c.label)}" />
+            <span style="font-weight:700;font-size:13.5px;">${escapeHtml(c.label)}</span>
+          </button>
+        `
+      ).join("")}
+    </div>
+  `;
+}
 
 export function applyTheme(themeId) {
   const safeId = VALID_THEME_IDS.has(themeId) ? themeId : "default";

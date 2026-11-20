@@ -4,7 +4,7 @@
 
 import { renderBodyweightChart, renderTargetVsActualChart } from "../charts.js";
 import { openShareModal } from "../share.js";
-import { escapeHtml, state } from "../state.js";
+import { companionArtHtml, escapeHtml, state } from "../state.js";
 
 export function renderProgressView(containerEl, actions) {
   const charts = state.cache.charts;
@@ -50,10 +50,28 @@ export function renderProgressView(containerEl, actions) {
         ${tabs
           .map(
             (t) =>
-              `<button type="button" class="pill-btn ${t.slug === state.selectedChartSlug ? "active" : ""}" data-chart-slug="${escapeHtml(t.slug)}">${escapeHtml(t.label)}</button>`
+              `<button type="button" class="pill-btn ${t.slug === state.selectedChartSlug ? "active" : ""}" data-chart-slug="${escapeHtml(t.slug)}" style="display:inline-flex;align-items:center;gap:6px;">${t.slug !== "__bodyweight__" ? companionArtHtml(t.slug, "xs") : ""}<span>${escapeHtml(t.label)}</span></button>`
           )
           .join("")}
       </div>
+
+      ${
+        !isBw && selectedEx
+          ? `
+            <div class="card-subtle row-inline" style="gap:12px;">
+              ${companionArtHtml(selectedEx.slug || selectedEx.name, "md")}
+              <div style="min-width:0;">
+                <div style="font-weight:700;font-size:15px;">${escapeHtml(selectedEx.name)}</div>
+                <div class="small muted">${
+                  selectedEx.has_target
+                    ? `Target curve: ${escapeHtml(String(selectedEx.start_weight))} kg → ${escapeHtml(String(selectedEx.goal_weight))} kg`
+                    : "Actual logged lifts"
+                }</div>
+              </div>
+            </div>
+          `
+          : ""
+      }
 
       <div id="chart-canvas"></div>
 

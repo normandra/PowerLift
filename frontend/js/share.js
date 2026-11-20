@@ -3,7 +3,7 @@
  */
 
 import { mountModal } from "./modals.js";
-import { THEMES, escapeHtml, fmtDelta, fmtKg, showToast, state } from "./state.js";
+import { THEMES, companionImageSrc, escapeHtml, fmtDelta, fmtKg, showToast, state } from "./state.js";
 
 const CARD_PALETTES = {
   default: {
@@ -51,6 +51,21 @@ const CARD_PALETTES = {
 };
 
 const FONT_STACK = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", "Segoe UI", Roboto, sans-serif';
+
+const imageCache = new Map();
+
+function loadImageCached(src) {
+  if (!src) return Promise.resolve(null);
+  if (imageCache.has(src)) return imageCache.get(src);
+  const p = new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+  imageCache.set(src, p);
+  return p;
+}
 
 function roundRectPath(ctx, x, y, w, h, r) {
   const rad = Math.min(r, w / 2, h / 2);
@@ -256,11 +271,20 @@ function drawFooter(ctx, W, H, pad, displayName, pal) {
   ctx.fillText(displayName ? `${displayName} · Training Block` : "Training Block", W - pad, fy + 19);
 }
 
-function renderShareCardToCanvas(canvas, opts) {
+async function renderShareCardToCanvas(canvas, opts) {
   const { format, mode, exerciseSlug, themeId, includeBodyweight } = opts;
   const dash = state.cache.dashboard;
   const charts = state.cache.charts;
   if (!canvas || !dash || !charts) return;
+
+  const { block, time, today_cards, bodyweight_card, stats } = dash;
+  const spotlightCard =
+    mode === "spotlight"
+      ? today_cards.find((c) => c.slug === exerciseSlug) || today_cards[0]
+      : null;
+  const companionImg = spotlightCard
+    ? await loadImageCached(companionImageSrc(spotlightCard.slug || spotlightCard.name))
+    : null;
 
   const isStory = format === "story";
   const W = 1080;
@@ -288,7 +312,6 @@ function renderShareCardToCanvas(canvas, opts) {
   ctx.fillStyle = g2;
   ctx.fillRect(0, 0, W, H);
 
-  const { block, time, today_cards, bodyweight_card, stats } = dash;
   const displayName = state.user?.display_name || "Lifter";
 
   // Header
@@ -330,13 +353,33 @@ function renderShareCardToCanvas(canvas, opts) {
   y += isStory ? 44 : 32;
 
   if (mode === "spotlight") {
-    const card = today_cards.find((c) => c.slug === exerciseSlug) || today_cards[0];
+    const card = spotlightCard;
     const exChart = (charts.exercises || []).find((e) => e.slug === (card?.slug || exerciseSlug)) || charts.exercises?.[0];
+    const titleX = companionImg ? pad + 94 : pad;
+    const titleTopY = companionImg ? y + 10 : y;
+
+    if (companionImg) {
+      const artSize = 78;
+      const artY = y - 6;
+      ctx.save();
+      roundRectPath(ctx, pad, artY, artSize, artSize, 18);
+      ctx.clip();
+      ctx.drawImage(companionImg, pad, artY, artSize, artSize);
+      ctx.restore();
+      ctx.save();
+      roundRectPath(ctx, pad, artY, artSize, artSize, 18);
+      ctx.strokeStyle = pal.border;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.restore();
+    }
 
     // Lift Title + Status Pill
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
     ctx.font = `800 ${isStory ? 48 : 38}px ${FONT_STACK}`;
     ctx.fillStyle = pal.text;
-    ctx.fillText(card ? card.name : "Lift", pad, y);
+    ctx.fillText(card ? card.name : "Lift", titleX, titleTopY);
 
     const metricLog = card?.latest_metric_log ?? card?.latest_log;
     const latestVal = metricLog
@@ -365,7 +408,7 @@ function renderShareCardToCanvas(canvas, opts) {
       ctx.fillText(evLabel, W - pad - ew / 2, y + 24);
     }
 
-    y += isStory ? 74 : 58;
+    y += isStory ? 84 : 76;
 
     // 4 Spotlight Stat Tiles
     const tileGap = 20;
@@ -664,6 +707,9 @@ export function openShareModal(initialOpts = {}) {
       const exSel = root.querySelector("#sh-ex");
       const bwChk = root.querySelector("#sh-bw");
 
+      let renderSeq = 0;
+      let currentRenderPromise = Promise.resolve();
+
       const redraw = () => {
         for (const b of root.querySelectorAll("[data-sh-fmt]")) {
           const active = b.getAttribute("data-sh-fmt") === format;
@@ -677,13 +723,12 @@ export function openShareModal(initialOpts = {}) {
           b.classList.toggle("active", b.getAttribute("data-sh-theme") === themeId);
         }
         exWrap.hidden = mode !== "spotlight";
-        renderShareCardToCanvas(canvas, {
-          format,
-          mode,
-          exerciseSlug,
-          themeId,
-          includeBodyweight,
-        });
+        const seq = ++renderSeq;
+        const optsSnap = { format, mode, exerciseSlug, themeId, includeBodyweight };
+        currentRenderPromise = (async () => {
+          if (seq !== renderSeq) return;
+          await renderShareCardToCanvas(canvas, optsSnap);
+        })();
       };
 
       for (const b of root.querySelectorAll("[data-sh-fmt]")) {
@@ -732,6 +777,7 @@ export function openShareModal(initialOpts = {}) {
       };
 
       root.querySelector("#sh-download").addEventListener("click", async () => {
+        await currentRenderPromise;
         const blob = await canvasToBlob(canvas);
         if (!blob) return;
         triggerDownload(blob);
@@ -739,6 +785,7 @@ export function openShareModal(initialOpts = {}) {
       });
 
       root.querySelector("#sh-share").addEventListener("click", async () => {
+        await currentRenderPromise;
         const blob = await canvasToBlob(canvas);
         if (!blob) return;
         const file = new File([blob], fileName(), { type: "image/png" });
@@ -760,6 +807,7 @@ export function openShareModal(initialOpts = {}) {
       });
 
       root.querySelector("#sh-copy").addEventListener("click", async () => {
+        await currentRenderPromise;
         const blob = await canvasToBlob(canvas);
         if (!blob) return;
         if (navigator.clipboard && window.ClipboardItem) {
