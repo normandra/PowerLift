@@ -3,16 +3,19 @@
  */
 
 import { IS_LOCAL_MODE, api } from "./api.js";
+import { cloud } from "./cloud.js";
+import { localStore } from "./localStore.js";
 import { openLogWorkoutModal } from "./modals.js";
 import { openShareModal } from "./share.js";
-import { applyCompanion, applyTheme, avatarHtml, escapeHtml, renderThemePillGroupHtml, state } from "./state.js";
+import { applyCompanion, applyTheme, avatarHtml, escapeHtml, renderThemePillGroupHtml, showToast, state } from "./state.js";
 import { renderAuthView } from "./views/auth.js";
+import { renderPartnerView } from "./views/partner.js";
 import { renderProgressView } from "./views/progress.js";
 import { renderSetupView } from "./views/setup.js";
 import { renderTodayView } from "./views/today.js";
 import { renderWeeklyView } from "./views/weekly.js";
 
-const TABS = [
+const BASE_TABS = [
   {
     id: "today",
     label: "Today",
@@ -34,6 +37,19 @@ const TABS = [
     icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l-.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.6.85 1 1.51 1H21a2 2 0 0 1 0 4h-.09c-.66 0-1.25.4-1.51 1z"/></svg>`,
   },
 ];
+
+const PARTNER_TAB = {
+  id: "partner",
+  label: "Partner",
+  icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
+};
+
+function getVisibleTabs() {
+  if (IS_LOCAL_MODE && state.cloud.signedIn && state.partner.linked) {
+    return [BASE_TABS[0], BASE_TABS[1], BASE_TABS[2], PARTNER_TAB, BASE_TABS[3]];
+  }
+  return BASE_TABS;
+}
 
 async function loadBlockData(blockId) {
   if (!blockId) {
@@ -66,8 +82,12 @@ function renderShell() {
   }
 
   const blocks = state.blocks || [];
+  const tabs = getVisibleTabs();
+  if (!tabs.some((t) => t.id === state.activeTab)) {
+    state.activeTab = "today";
+  }
 
-  const navBtnsHtml = TABS.map(
+  const navBtnsHtml = tabs.map(
     (t) => `
       <button type="button" class="nav-btn ${state.activeTab === t.id ? "active" : ""}" data-tab="${t.id}">
         ${t.icon}
@@ -90,7 +110,7 @@ function renderShell() {
             ${avatarHtml(state.user.display_name, state.user.avatar_color)}
             <div style="min-width:0;flex:1;">
               <div style="font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(state.user.display_name)}</div>
-              <div class="dim small">${IS_LOCAL_MODE ? "Offline Ready" : `@${escapeHtml(state.user.username)}`}</div>
+              <div class="dim small">${IS_LOCAL_MODE ? (state.cloud.signedIn ? "Cloud Synced" : "Offline Ready") : `@${escapeHtml(state.user.username)}`}</div>
             </div>
           </div>
           ${
@@ -144,7 +164,7 @@ function renderShell() {
           : ""
       }
 
-      <nav class="bottom-nav">${navBtnsHtml}</nav>
+      <nav class="bottom-nav ${tabs.length === 5 ? "has-partner" : ""}">${navBtnsHtml}</nav>
     </div>
   `;
 
@@ -196,6 +216,10 @@ function renderShell() {
 function renderCurrentTab() {
   const viewRoot = document.getElementById("view-root");
   if (!viewRoot) return;
+  const tabs = getVisibleTabs();
+  if (!tabs.some((t) => t.id === state.activeTab)) {
+    state.activeTab = "today";
+  }
   for (const btn of document.querySelectorAll("[data-tab]")) {
     btn.classList.toggle("active", btn.getAttribute("data-tab") === state.activeTab);
   }
@@ -205,6 +229,11 @@ function renderCurrentTab() {
     renderWeeklyView(viewRoot, actions);
   } else if (state.activeTab === "progress") {
     renderProgressView(viewRoot, actions);
+  } else if (state.activeTab === "partner") {
+    renderPartnerView(viewRoot, actions);
+    if (state.cloud.signedIn && state.partner.linked && !state.partner.overview && !state.partner.loading) {
+      actions.refreshPartner();
+    }
   } else if (state.activeTab === "setup") {
     renderSetupView(viewRoot, actions);
   }
@@ -221,8 +250,77 @@ const actions = {
     renderShell();
   },
   setCompanion(companionId) {
-    applyCompanion(companionId);
+    const safeId = applyCompanion(companionId);
+    if (IS_LOCAL_MODE && state.user) {
+      localStore.updateProfile({ companion: safeId }).catch(() => {});
+    }
     renderShell();
+  },
+  async signInWithGoogle() {
+    await cloud.signInWithGoogle();
+  },
+  async syncCloudNow() {
+    try {
+      await cloud.syncNow({ silent: false });
+      await actions.refreshAllBlocks();
+      if (state.partner.linked) {
+        await cloud.fetchPartnerOverview().catch(() => {});
+      }
+      renderShell();
+      showToast("Synced with Google Cloud backup!");
+    } catch (err) {
+      showToast(err.message || "Sync failed", true);
+    }
+  },
+  async signOutCloud() {
+    await cloud.signOut();
+    if (state.activeTab === "partner") state.activeTab = "today";
+    showToast("Signed out (local data kept on this device)");
+    renderShell();
+  },
+  async refreshPartner() {
+    if (!state.cloud.signedIn || !state.partner.linked) return;
+    state.partner.loading = true;
+    renderCurrentTab();
+    try {
+      await cloud.fetchPartnerOverview();
+    } catch (err) {
+      showToast(err.message || "Could not refresh partner", true);
+    } finally {
+      state.partner.loading = false;
+      renderCurrentTab();
+    }
+  },
+  async generatePartnerInvite() {
+    try {
+      await cloud.createInviteCode();
+      showToast("Invite code ready!");
+      renderCurrentTab();
+    } catch (err) {
+      showToast(err.message || "Could not generate invite code", true);
+    }
+  },
+  async claimPartnerInvite(code) {
+    try {
+      const p = await cloud.claimInviteCode(code);
+      showToast(`Linked with ${p?.display_name || "Partner"}!`);
+      renderShell();
+    } catch (err) {
+      showToast(err.message || "Could not link partner", true);
+    }
+  },
+  async unlinkPartner() {
+    try {
+      await cloud.unlinkPartner();
+      if (state.activeTab === "partner") state.activeTab = "today";
+      showToast("Partner unlinked");
+      renderShell();
+    } catch (err) {
+      showToast(err.message || "Could not unlink partner", true);
+    }
+  },
+  async togglePartnerReaction(workoutLogId, logOwnerId, emoji, currentlyReacted) {
+    await cloud.toggleReaction(workoutLogId, logOwnerId, emoji, currentlyReacted);
   },
   refreshShell() {
     renderShell();
@@ -287,6 +385,10 @@ const actions = {
 
 async function init() {
   applyTheme(state.theme);
+  if (IS_LOCAL_MODE) {
+    localStore.setMutationListener((evt) => cloud.handleLocalMutation(evt));
+  }
+
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker
       .register("./sw.js")
@@ -299,11 +401,50 @@ async function init() {
     // ignore
   }
 
+  if (IS_LOCAL_MODE) {
+    const { session, justSignedIn } = await cloud.initSession(async (event, nextSession) => {
+      if (event === "SIGNED_IN" && nextSession) {
+        try {
+          await cloud.syncNow({ silent: true });
+          const meRes = await api.me();
+          state.user = meRes.user;
+          state.blocks = meRes.blocks || [];
+          await actions.bootstrapAfterLogin();
+          if (state.partner.linked) {
+            cloud.fetchPartnerOverview().then(() => renderShell()).catch(() => {});
+          }
+        } catch {
+          renderShell();
+        }
+      } else if (event === "SIGNED_OUT") {
+        renderShell();
+      }
+    });
+
+    if (session) {
+      try {
+        await cloud.syncNow({ silent: !justSignedIn });
+        if (justSignedIn) {
+          showToast("Signed in with Google & backed up data!");
+        }
+      } catch (err) {
+        if (justSignedIn) {
+          showToast(err.message || "Signed in, sync pending", true);
+        }
+      }
+    }
+  }
+
   try {
     const meRes = await api.me();
     state.user = meRes.user;
     state.blocks = meRes.blocks || [];
     await actions.bootstrapAfterLogin();
+    if (IS_LOCAL_MODE && state.cloud.signedIn && state.partner.linked) {
+      cloud.fetchPartnerOverview().then(() => {
+        if (state.activeTab === "partner") renderCurrentTab();
+      }).catch(() => {});
+    }
   } catch {
     renderShell();
   }

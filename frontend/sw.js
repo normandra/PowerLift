@@ -1,9 +1,9 @@
-const CACHE_NAME = "pairlift-shell-v8";
+const CACHE_NAME = "pairlift-shell-v9";
 const SHELL_ASSETS = [
   "./",
   "./index.html",
   "./manifest.webmanifest",
-  "./css/styles.css?v=8",
+  "./css/styles.css?v=9",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
   "./icons/icon.svg",
@@ -25,8 +25,9 @@ const SHELL_ASSETS = [
   "./assets/companions/gorilla-squat.gif",
   "./assets/companions/gorilla-bench.gif",
   "./assets/companions/gorilla-deadlift.gif",
-  "./js/app.js?v=8",
+  "./js/app.js?v=9",
   "./js/api.js",
+  "./js/cloud.js",
   "./js/localStore.js",
   "./js/plansEngine.js",
   "./js/state.js",
@@ -37,6 +38,7 @@ const SHELL_ASSETS = [
   "./js/views/today.js",
   "./js/views/weekly.js",
   "./js/views/progress.js",
+  "./js/views/partner.js",
   "./js/views/setup.js"
 ];
 
@@ -63,6 +65,10 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (event.request.mode === "navigate") {
+    if (url.search.includes("code=") || url.search.includes("error=")) {
+      event.respondWith(fetch(event.request));
+      return;
+    }
     event.respondWith(
       fetch(event.request)
         .then((res) => {

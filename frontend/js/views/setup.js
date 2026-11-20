@@ -4,7 +4,9 @@
 
 import { IS_LOCAL_MODE, api } from "../api.js";
 import { openCreateBlockModal } from "../modals.js";
-import { THEMES, escapeHtml, fmtKg, renderCompanionPickerCardsHtml, showToast, state, todayIso } from "../state.js";
+import { THEMES, avatarHtml, escapeHtml, fmtKg, renderCompanionPickerCardsHtml, showToast, state, todayIso } from "../state.js";
+
+const GOOGLE_ICON_SVG = `<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="#34A853" d="M12 24c2.75 0 5.06-.91 6.75-2.46l-3.3-2.56c-.91.61-2.08.97-3.45.97-2.65 0-4.9-1.79-5.7-4.2H2.51v2.64A12 12 0 0 0 12 24z"/><path fill="#4285F4" d="M23.5 12.27c0-.79-.07-1.54-.2-2.27H12v4.3h6.46a5.52 5.52 0 0 1-2.4 3.63l3.3 2.56c1.93-1.78 3.14-4.41 3.14-8.22z"/><path fill="#FBBC05" d="M5.92 14.35a7.2 7.2 0 0 1 0-4.7V7.01H2.51a12 12 0 0 0 0 9.98l3.41-2.64z"/><path fill="#EA4335" d="M12 4.75c1.5 0 2.84.52 3.9 1.52l2.92-2.92C17.05 1.7 14.74.75 12 .75A12 12 0 0 0 2.51 7.01l3.41 2.64C6.72 7.24 9.15 4.75 12 4.75z"/></svg>`;
 
 function defaultWeightsForSlug(slug) {
   if (slug === "squat") return { start: 60, goal: 120, inc: 2.5 };
@@ -52,6 +54,117 @@ export function renderSetupView(containerEl, actions) {
       </div>
     </section>
   `;
+
+  const cloudStatusBadge = state.cloud.syncing
+    ? `<span class="badge badge-plan">Syncing…</span>`
+    : state.cloud.signedIn
+    ? `<span class="badge badge-hit">Cloud Synced</span>`
+    : `<span class="badge badge-waiting">Offline Only</span>`;
+
+  const syncTimeLabel = state.cloud.lastSyncedAt
+    ? `Last synced ${new Date(state.cloud.lastSyncedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+    : "Auto-syncs every workout & edit";
+
+  const cloudAccountSection = IS_LOCAL_MODE
+    ? `
+      <section class="card" style="display:flex;flex-direction:column;gap:12px;">
+        <div class="row-between" style="flex-wrap:wrap;gap:8px;">
+          <div>
+            <h3 class="section-title" style="margin:0;">Cloud Account &amp; Backup</h3>
+            <div class="small muted">${
+              state.cloud.signedIn
+                ? `${escapeHtml(state.cloud.email || "Google Account")} · ${escapeHtml(syncTimeLabel)}`
+                : "Sign in with Google to back up local data, sync across devices &amp; link a partner"
+            }</div>
+          </div>
+          ${cloudStatusBadge}
+        </div>
+        ${
+          state.cloud.signedIn
+            ? `
+              <div class="row-inline" style="flex-wrap:wrap;">
+                <button type="button" class="btn btn-mint btn-sm" id="s-sync-now" ${state.cloud.syncing ? "disabled" : ""}>${state.cloud.syncing ? "Syncing…" : "Sync Now"}</button>
+                <button type="button" class="btn btn-ghost btn-sm" id="s-cloud-signout">Sign Out</button>
+              </div>
+            `
+            : `
+              <div>
+                <button type="button" class="btn btn-google btn-sm" id="s-google-signin">
+                  ${GOOGLE_ICON_SVG}
+                  <span>Sign in with Google</span>
+                </button>
+              </div>
+            `
+        }
+      </section>
+    `
+    : "";
+
+  const partnerLinkSection =
+    IS_LOCAL_MODE && state.cloud.signedIn
+      ? `
+      <section class="card" style="display:flex;flex-direction:column;gap:12px;">
+        <div class="row-between" style="flex-wrap:wrap;gap:8px;">
+          <div>
+            <h3 class="section-title" style="margin:0;">Partner Link</h3>
+            <div class="small muted">${
+              state.partner.linked
+                ? "Unlocks the Partner tab to view their charts &amp; react to lifts"
+                : "Link 1:1 with your partner to compare progress &amp; cheer on lifts"
+            }</div>
+          </div>
+          <span class="badge ${state.partner.linked ? "badge-hit" : "badge-waiting"}">
+            ${state.partner.linked ? "Linked" : "Not Linked"}
+          </span>
+        </div>
+
+        ${
+          state.partner.linked && state.partner.profile
+            ? `
+              <div class="card-subtle row-between" style="flex-wrap:wrap;gap:10px;">
+                <div class="row-inline">
+                  ${avatarHtml(state.partner.profile.display_name, state.partner.profile.avatar_color)}
+                  <div>
+                    <strong>${escapeHtml(state.partner.profile.display_name)}</strong>
+                    <div class="small muted">Open the Partner tab to view charts &amp; recent lifts</div>
+                  </div>
+                </div>
+                <button type="button" class="btn btn-ghost btn-sm" id="s-unlink-partner" style="color:var(--crimson);">Unlink</button>
+              </div>
+            `
+            : `
+              <div class="grid-2">
+                <div class="invite-box">
+                  <div class="small muted"><strong>Share your invite code</strong></div>
+                  ${
+                    state.partner.inviteCode
+                      ? `
+                        <div class="row-between">
+                          <span class="code-chip">${escapeHtml(state.partner.inviteCode)}</span>
+                          <button type="button" class="btn btn-secondary btn-sm" id="s-copy-invite">Copy</button>
+                        </div>
+                        <div class="dim small">Ask your partner to enter this code in their Setup tab.</div>
+                      `
+                      : `
+                        <button type="button" class="btn btn-mint btn-sm" id="s-gen-invite">Generate Invite Code</button>
+                        <div class="dim small">Creates a 6-character code valid for 7 days.</div>
+                      `
+                  }
+                </div>
+
+                <form id="s-claim-invite-form" class="card-subtle" style="display:flex;flex-direction:column;gap:8px;">
+                  <label for="s-invite-input" class="small muted"><strong>Have your partner's code?</strong></label>
+                  <div class="row-inline">
+                    <input id="s-invite-input" type="text" placeholder="e.g. A7K9P2" maxlength="10" style="text-transform:uppercase;letter-spacing:0.08em;" required />
+                    <button type="submit" class="btn btn-primary btn-sm" style="white-space:nowrap;">Link</button>
+                  </div>
+                </form>
+              </div>
+            `
+        }
+      </section>
+    `
+      : "";
 
   const backupSection = IS_LOCAL_MODE
     ? `
@@ -262,6 +375,8 @@ export function renderSetupView(containerEl, actions) {
 
   containerEl.innerHTML = `
     ${appearanceSection}
+    ${cloudAccountSection}
+    ${partnerLinkSection}
     ${backupSection}
     ${blocksSection}
     ${planSection}
@@ -280,6 +395,66 @@ export function renderSetupView(containerEl, actions) {
   }
 
   if (IS_LOCAL_MODE) {
+    const sGoogleBtn = containerEl.querySelector("#s-google-signin");
+    if (sGoogleBtn) {
+      sGoogleBtn.addEventListener("click", async () => {
+        sGoogleBtn.disabled = true;
+        sGoogleBtn.querySelector("span").textContent = "Redirecting…";
+        try {
+          await actions.signInWithGoogle();
+        } catch (err) {
+          sGoogleBtn.disabled = false;
+          sGoogleBtn.querySelector("span").textContent = "Sign in with Google";
+          showToast(err.message || "Google sign-in failed", true);
+        }
+      });
+    }
+
+    const sSyncBtn = containerEl.querySelector("#s-sync-now");
+    if (sSyncBtn) {
+      sSyncBtn.addEventListener("click", actions.syncCloudNow);
+    }
+
+    const sSignOutBtn = containerEl.querySelector("#s-cloud-signout");
+    if (sSignOutBtn) {
+      sSignOutBtn.addEventListener("click", actions.signOutCloud);
+    }
+
+    const sGenInv = containerEl.querySelector("#s-gen-invite");
+    if (sGenInv) {
+      sGenInv.addEventListener("click", actions.generatePartnerInvite);
+    }
+
+    const sCopyInv = containerEl.querySelector("#s-copy-invite");
+    if (sCopyInv) {
+      sCopyInv.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(state.partner.inviteCode || "");
+          showToast("Invite code copied!");
+        } catch {
+          showToast(`Invite code: ${state.partner.inviteCode}`);
+        }
+      });
+    }
+
+    const sClaimForm = containerEl.querySelector("#s-claim-invite-form");
+    if (sClaimForm) {
+      sClaimForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const code = containerEl.querySelector("#s-invite-input").value.trim();
+        if (!code) return;
+        await actions.claimPartnerInvite(code);
+      });
+    }
+
+    const sUnlink = containerEl.querySelector("#s-unlink-partner");
+    if (sUnlink) {
+      sUnlink.addEventListener("click", async () => {
+        if (!window.confirm("Unlink from your partner? Your own workout data stays intact.")) return;
+        await actions.unlinkPartner();
+      });
+    }
+
     containerEl.querySelector("#local-profile-form").addEventListener("submit", async (e) => {
       e.preventDefault();
       const name = containerEl.querySelector("#lp-name").value.trim();

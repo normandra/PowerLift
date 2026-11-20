@@ -70,6 +70,18 @@ function loadStore() {
   }
 }
 
+let mutationListener = null;
+
+function notifyMutation(evt) {
+  if (typeof mutationListener === "function") {
+    try {
+      mutationListener(evt);
+    } catch {
+      // ignore background sync listener errors
+    }
+  }
+}
+
 function saveStore(store) {
   localStorage.setItem(STORE_KEY, JSON.stringify(store));
 }
@@ -376,21 +388,24 @@ export const localStore = {
       updated_at: now,
     };
     saveStore(store);
+    notifyMutation({ type: "profile" });
     return {
       user: store.user,
       blocks: sortBlocks(store.blocks, store.block_exercises),
     };
   },
 
-  async updateProfile({ display_name, avatar_color } = {}) {
+  async updateProfile({ display_name, avatar_color, companion } = {}) {
     const store = loadStore();
     if (!store.user) return localStore.createLocalProfile({ display_name, avatar_color });
     if (display_name !== undefined && display_name.trim()) {
       store.user.display_name = display_name.trim();
     }
     if (avatar_color) store.user.avatar_color = avatar_color;
+    if (companion) store.user.companion = companion;
     store.user.updated_at = nowIso();
     saveStore(store);
+    notifyMutation({ type: "profile" });
     return { user: store.user, blocks: sortBlocks(store.blocks, store.block_exercises) };
   },
 
@@ -412,6 +427,7 @@ export const localStore = {
       seedSampleBlock(store);
     }
     saveStore(store);
+    notifyMutation({ type: "bulk" });
     return {
       user: store.user,
       blocks: sortBlocks(store.blocks, store.block_exercises),
@@ -467,6 +483,7 @@ export const localStore = {
       bodyweight_logs: Array.isArray(data.bodyweight_logs) ? data.bodyweight_logs : [],
     };
     saveStore(clean);
+    notifyMutation({ type: "bulk" });
     return {
       user: clean.user,
       blocks: sortBlocks(clean.blocks, clean.block_exercises),
@@ -539,6 +556,7 @@ export const localStore = {
     });
 
     saveStore(freshStore);
+    notifyMutation({ type: "upsert", table: "blocks", id: blockId });
     return buildBlockDetail(freshStore, block);
   },
 
@@ -589,6 +607,7 @@ export const localStore = {
     }
 
     saveStore(store);
+    notifyMutation({ type: "upsert", table: "blocks", id: block.id });
     return buildBlockDetail(store, block);
   },
 
@@ -603,6 +622,7 @@ export const localStore = {
     store.workout_logs = store.workout_logs.filter((l) => l.block_id !== block.id);
     store.bodyweight_logs = store.bodyweight_logs.filter((b) => b.block_id !== block.id);
     saveStore(store);
+    notifyMutation({ type: "delete", table: "blocks", id: String(blockId) });
     return { ok: true, id: blockId };
   },
 
@@ -661,6 +681,7 @@ export const localStore = {
     }
 
     saveStore(store);
+    notifyMutation({ type: "upsert", table: "plans", id: plan.id });
     return buildBlockDetail(store, block);
   },
 
@@ -752,6 +773,7 @@ export const localStore = {
     };
     store.workout_logs.push(log);
     saveStore(store);
+    notifyMutation({ type: "upsert", table: "workout_logs", id: log.id });
     return { ...log, exercise_name: ex.name };
   },
 
@@ -759,6 +781,7 @@ export const localStore = {
     const store = loadStore();
     store.workout_logs = store.workout_logs.filter((l) => String(l.id) !== String(logId));
     saveStore(store);
+    notifyMutation({ type: "delete", table: "workout_logs", id: String(logId) });
     return { ok: true, id: logId };
   },
 
@@ -788,187 +811,12 @@ export const localStore = {
       store.bodyweight_logs.push(existing);
     }
     saveStore(store);
+    notifyMutation({ type: "upsert", table: "bodyweight_logs", id: existing.id });
     return existing;
   },
 
   async getDashboard(blockId) {
-    const store = loadStore();
-    const block = requireBlock(store, blockId);
-    const todayStr = todayIso();
-    const timeMeta = blockTimeMeta(block, todayStr);
-    const dayNum = timeMeta.day_number;
-    const dur = timeMeta.total_days;
-    const currentWeek = timeMeta.week_number;
-
-    const exercises = store.block_exercises
-      .filter((e) => e.block_id === block.id)
-      .sort((a, b) => a.sort_order - b.sort_order);
-    const plan = store.plans.find((p) => p.block_id === block.id) || null;
-    const targetsByEx = new Map();
-    if (plan) {
-      for (const t of store.exercise_targets) {
-        if (t.member_plan_id === plan.id) targetsByEx.set(t.block_exercise_id, t);
-      }
-    }
-
-    const logs = store.workout_logs
-      .filter((l) => l.block_id === block.id)
-      .sort((a, b) => (a.log_date !== b.log_date ? a.log_date.localeCompare(b.log_date) : String(a.created_at).localeCompare(String(b.created_at))));
-    const bwLogs = store.bodyweight_logs
-      .filter((b) => b.block_id === block.id)
-      .sort((a, b) => a.log_date.localeCompare(b.log_date));
-
-    const pcts = [];
-    const todayCards = exercises.map((ex) => {
-      const tCfg = targetsByEx.get(ex.id) || null;
-      const exLogs = logs.filter((l) => l.block_exercise_id === ex.id);
-      const targetMetric = tCfg ? tCfg.target_metric || "working_weight" : "working_weight";
-      const latestLog = exLogs[exLogs.length - 1] || null;
-      const latestMetricLog =
-        [...exLogs].reverse().find((l) => metricValueForLog(l, targetMetric) !== null) || null;
-      const latest1rmLog =
-        [...exLogs]
-          .reverse()
-          .find(
-            (l) =>
-              (l.one_rm !== null && l.one_rm !== undefined) ||
-              (l.estimated_1rm !== null && l.estimated_1rm !== undefined)
-          ) || null;
-      const latest1rm = latest1rmLog ? latest1rmLog.one_rm ?? latest1rmLog.estimated_1rm : null;
-      const todayLog = [...exLogs].reverse().find((l) => l.log_date === todayStr) || null;
-      const weekLogs = exLogs.filter(
-        (l) => Math.floor((clampedDayIndex(block.start_date, l.log_date, dur) - 1) / 7) + 1 === currentWeek
-      );
-
-      let targetInfo = null;
-      let latestEval = null;
-      let todayEval = null;
-      let pctToGoal = 0;
-      let startW = null;
-      let goalW = null;
-      let bestVal = null;
-
-      if (tCfg) {
-        startW = Number(tCfg.start_weight);
-        goalW = Number(tCfg.goal_weight);
-        targetInfo = computeExerciseDayTarget(
-          tCfg.plan_type,
-          dayNum,
-          dur,
-          startW,
-          goalW,
-          Number(tCfg.increment),
-          tCfg.config
-        );
-        const vals = exLogs.map((l) => metricValueForLog(l, targetMetric)).filter((v) => v !== null);
-        if (vals.length) bestVal = Math.max(...vals);
-        if (latestMetricLog) {
-          latestEval = evaluateLog(block, latestMetricLog, tCfg);
-          pctToGoal = computeNormalizedProgress(metricValueForLog(latestMetricLog, targetMetric), startW, goalW);
-          pcts.push(pctToGoal);
-        }
-        if (todayLog) todayEval = evaluateLog(block, todayLog, tCfg);
-      } else if (exLogs.length) {
-        const vals = exLogs.map((l) => metricValueForLog(l, "working_weight")).filter((v) => v !== null);
-        if (vals.length) bestVal = Math.max(...vals);
-      }
-
-      return {
-        block_exercise_id: ex.id,
-        name: ex.name,
-        slug: ex.slug,
-        default_increment: ex.default_increment,
-        has_target: Boolean(tCfg),
-        plan_type: tCfg ? tCfg.plan_type : plan ? plan.plan_type : null,
-        target_metric: targetMetric,
-        start_weight: startW,
-        goal_weight: goalW,
-        increment: tCfg ? Number(tCfg.increment) : ex.default_increment,
-        today_target: targetInfo,
-        today_log: todayLog,
-        today_eval: todayEval,
-        latest_log: latestLog,
-        latest_metric_log: latestMetricLog,
-        latest_1rm: latest1rm,
-        latest_eval: latestEval,
-        best_value: bestVal,
-        logged_this_week: weekLogs.length > 0,
-        pct_to_goal: pctToGoal,
-      };
-    });
-
-    const latestBw = bwLogs[bwLogs.length - 1] || null;
-    const todayBw = [...bwLogs].reverse().find((b) => b.log_date === todayStr) || null;
-    const bwCard = {
-      enabled: Boolean(block.track_bodyweight),
-      has_target: Boolean(plan && plan.bodyweight_start != null && plan.bodyweight_goal != null),
-      start: plan ? plan.bodyweight_start : null,
-      goal: plan ? plan.bodyweight_goal : null,
-      today_target: null,
-      latest_log: latestBw,
-      today_log: todayBw,
-      evaluation: null,
-    };
-    if (bwCard.enabled && bwCard.has_target) {
-      bwCard.today_target = computeBodyweightDayTarget(dayNum, dur, plan.bodyweight_start, plan.bodyweight_goal);
-      const refBw = todayBw || latestBw;
-      if (refBw) {
-        bwCard.evaluation = evaluateBodyweightAgainstTarget(
-          refBw.weight,
-          bwCard.today_target,
-          plan.bodyweight_start,
-          plan.bodyweight_goal
-        );
-      }
-    }
-
-    let totalKg = 0;
-    let totalPrs = 0;
-    let targetsHit = 0;
-    let targetsTotal = 0;
-    for (const l of logs) {
-      totalKg += l.total_volume > 0 ? Number(l.total_volume) : Number(l.working_weight ?? l.one_rm ?? 0);
-      if (l.is_pr) totalPrs += 1;
-      const ev = evaluateLog(block, l, targetsByEx.get(l.block_exercise_id));
-      if (ev && ev.hit !== null && ev.hit !== undefined) {
-        targetsTotal += 1;
-        if (ev.hit) targetsHit += 1;
-      }
-    }
-
-    const exMap = new Map(exercises.map((e) => [e.id, e]));
-    const recentLogs = [...logs]
-      .slice(-10)
-      .reverse()
-      .map((l) => {
-        const ex = exMap.get(l.block_exercise_id);
-        return {
-          ...l,
-          exercise_name: ex ? ex.name : "Lift",
-          day_number: clampedDayIndex(block.start_date, l.log_date, dur),
-          evaluation: evaluateLog(block, l, targetsByEx.get(l.block_exercise_id)),
-        };
-      });
-
-    return {
-      block: { ...block },
-      time: timeMeta,
-      has_plan: Boolean(plan),
-      plan,
-      today_cards: todayCards,
-      bodyweight_card: bwCard,
-      stats: {
-        total_kg_lifted: Math.round(totalKg * 10) / 10,
-        sessions_logged: new Set(logs.map((l) => l.log_date)).size,
-        streak_weeks: weeklyStreak(block, logs, currentWeek),
-        total_prs: totalPrs,
-        targets_hit: targetsHit,
-        targets_total: targetsTotal,
-        hit_rate_pct: targetsTotal > 0 ? Math.round((targetsHit / targetsTotal) * 1000) / 10 : null,
-        avg_pct_to_goal: pcts.length ? Math.round((pcts.reduce((a, b) => a + b, 0) / pcts.length) * 10) / 10 : 0,
-      },
-      recent_logs: recentLogs,
-    };
+    return computeDashboardFromStore(loadStore(), blockId, todayIso());
   },
 
   async getWeekly(blockId, weekNum = null) {
@@ -1122,137 +970,339 @@ export const localStore = {
   },
 
   async getCharts(blockId) {
-    const store = loadStore();
-    const block = requireBlock(store, blockId);
-    const timeMeta = blockTimeMeta(block, todayIso());
-    const dur = timeMeta.total_days;
+    return computeChartsFromStore(loadStore(), blockId, todayIso());
+  },
 
-    const exercises = store.block_exercises
-      .filter((e) => e.block_id === block.id)
-      .sort((a, b) => a.sort_order - b.sort_order);
-    const plan = store.plans.find((p) => p.block_id === block.id) || null;
-    const targetsByEx = new Map();
-    if (plan) {
-      for (const t of store.exercise_targets) {
-        if (t.member_plan_id === plan.id) targetsByEx.set(t.block_exercise_id, t);
-      }
-    }
-    const logs = store.workout_logs
-      .filter((l) => l.block_id === block.id)
-      .sort((a, b) => a.log_date.localeCompare(b.log_date));
-    const bwLogs = store.bodyweight_logs
-      .filter((b) => b.block_id === block.id)
-      .sort((a, b) => a.log_date.localeCompare(b.log_date));
+  setMutationListener(fn) {
+    mutationListener = typeof fn === "function" ? fn : null;
+  },
 
-    const exerciseCharts = exercises.map((ex) => {
-      const tCfg = targetsByEx.get(ex.id) || null;
-      const exLogs = logs.filter((l) => l.block_exercise_id === ex.id);
-      const targetSeries = [];
-      if (tCfg) {
-        for (let d = 1; d <= dur; d += 1) {
-          const ti = computeExerciseDayTarget(
-            tCfg.plan_type,
-            d,
-            dur,
-            tCfg.start_weight,
-            tCfg.goal_weight,
-            tCfg.increment,
-            tCfg.config
-          );
-          targetSeries.push({
-            day: d,
-            date: dayToDateStr(block.start_date, d),
-            target: ti.target,
-            secondary_target: ti.secondary_target,
-          });
-        }
-      }
-      const actualPoints = exLogs.map((l) => {
-        const dIdx = clampedDayIndex(block.start_date, l.log_date, dur);
-        const ev = evaluateLog(block, l, tCfg);
-        const metric = tCfg ? tCfg.target_metric : "working_weight";
-        const val = metricValueForLog(l, metric);
-        return {
-          log_id: l.id,
-          day: dIdx,
-          date: l.log_date,
-          working_weight: l.working_weight,
-          one_rm: l.one_rm,
-          estimated_1rm: l.estimated_1rm,
-          metric_value: val,
-          target: ev ? ev.target : null,
-          delta: ev ? ev.delta : null,
-          status: ev ? ev.status : "logged",
-          hit: ev ? ev.hit : true,
-          is_pr: Boolean(l.is_pr),
-          normalized_pct: tCfg && val !== null ? computeNormalizedProgress(val, tCfg.start_weight, tCfg.goal_weight) : null,
-        };
-      });
-      return {
-        block_exercise_id: ex.id,
-        name: ex.name,
-        slug: ex.slug,
-        has_target: Boolean(tCfg),
-        plan_type: tCfg ? tCfg.plan_type : null,
-        target_metric: tCfg ? tCfg.target_metric : "working_weight",
-        start_weight: tCfg ? Number(tCfg.start_weight) : null,
-        goal_weight: tCfg ? Number(tCfg.goal_weight) : null,
-        target_series: targetSeries,
-        actual_points: actualPoints,
-      };
-    });
+  getRawSnapshot() {
+    return loadStore();
+  },
 
-    const bwEnabled = Boolean(block.track_bodyweight);
-    const hasBwTarget = Boolean(
-      bwEnabled && plan && plan.bodyweight_start != null && plan.bodyweight_goal != null
-    );
-    const bwTargetSeries = [];
-    if (hasBwTarget) {
-      for (let d = 1; d <= dur; d += 1) {
-        bwTargetSeries.push({
-          day: d,
-          date: dayToDateStr(block.start_date, d),
-          target: computeBodyweightDayTarget(d, dur, plan.bodyweight_start, plan.bodyweight_goal),
-        });
-      }
-    }
-    const bwActualPoints = bwLogs.map((b) => {
-      const dIdx = clampedDayIndex(block.start_date, b.log_date, dur);
-      let tVal = null;
-      let onTrack = true;
-      if (hasBwTarget) {
-        tVal = computeBodyweightDayTarget(dIdx, dur, plan.bodyweight_start, plan.bodyweight_goal);
-        onTrack = evaluateBodyweightAgainstTarget(
-          b.weight,
-          tVal,
-          plan.bodyweight_start,
-          plan.bodyweight_goal
-        ).on_track;
-      }
-      return {
-        day: dIdx,
-        date: b.log_date,
-        weight: b.weight,
-        target: tVal,
-        delta: tVal !== null ? Math.round((Number(b.weight) - tVal) * 100) / 100 : null,
-        on_track: onTrack,
-      };
-    });
+  replaceRawSnapshot(nextStore) {
+    saveStore({ ...emptyStore(), ...nextStore, schema_version: 1 });
+  },
 
+  computeAnalyticsForSnapshot(snapshot, blockId, todayStr = todayIso()) {
+    const clean = { ...emptyStore(), ...snapshot };
     return {
-      block_id: block.id,
-      start_date: block.start_date,
-      duration_days: dur,
-      current_day: timeMeta.day_number,
-      exercises: exerciseCharts,
-      bodyweight: {
-        enabled: bwEnabled,
-        has_target: hasBwTarget,
-        start: plan ? plan.bodyweight_start : null,
-        goal: plan ? plan.bodyweight_goal : null,
-        target_series: bwTargetSeries,
-        actual_points: bwActualPoints,
-      },
+      dashboard: computeDashboardFromStore(clean, blockId, todayStr),
+      charts: computeChartsFromStore(clean, blockId, todayStr),
     };
   },
 };
+
+function computeDashboardFromStore(store, blockId, todayStr = todayIso()) {
+  const block = requireBlock(store, blockId);
+  const timeMeta = blockTimeMeta(block, todayStr);
+  const dayNum = timeMeta.day_number;
+  const dur = timeMeta.total_days;
+  const currentWeek = timeMeta.week_number;
+
+  const exercises = store.block_exercises
+    .filter((e) => e.block_id === block.id)
+    .sort((a, b) => a.sort_order - b.sort_order);
+  const plan = store.plans.find((p) => p.block_id === block.id) || null;
+  const targetsByEx = new Map();
+  if (plan) {
+    for (const t of store.exercise_targets) {
+      if (t.member_plan_id === plan.id) targetsByEx.set(t.block_exercise_id, t);
+    }
+  }
+
+  const logs = store.workout_logs
+    .filter((l) => l.block_id === block.id)
+    .sort((a, b) => (a.log_date !== b.log_date ? a.log_date.localeCompare(b.log_date) : String(a.created_at).localeCompare(String(b.created_at))));
+  const bwLogs = store.bodyweight_logs
+    .filter((b) => b.block_id === block.id)
+    .sort((a, b) => a.log_date.localeCompare(b.log_date));
+
+  const pcts = [];
+  const todayCards = exercises.map((ex) => {
+    const tCfg = targetsByEx.get(ex.id) || null;
+    const exLogs = logs.filter((l) => l.block_exercise_id === ex.id);
+    const targetMetric = tCfg ? tCfg.target_metric || "working_weight" : "working_weight";
+    const latestLog = exLogs[exLogs.length - 1] || null;
+    const latestMetricLog =
+      [...exLogs].reverse().find((l) => metricValueForLog(l, targetMetric) !== null) || null;
+    const latest1rmLog =
+      [...exLogs]
+        .reverse()
+        .find(
+          (l) =>
+            (l.one_rm !== null && l.one_rm !== undefined) ||
+            (l.estimated_1rm !== null && l.estimated_1rm !== undefined)
+        ) || null;
+    const latest1rm = latest1rmLog ? latest1rmLog.one_rm ?? latest1rmLog.estimated_1rm : null;
+    const todayLog = [...exLogs].reverse().find((l) => l.log_date === todayStr) || null;
+    const weekLogs = exLogs.filter(
+      (l) => Math.floor((clampedDayIndex(block.start_date, l.log_date, dur) - 1) / 7) + 1 === currentWeek
+    );
+
+    let targetInfo = null;
+    let latestEval = null;
+    let todayEval = null;
+    let pctToGoal = 0;
+    let startW = null;
+    let goalW = null;
+    let bestVal = null;
+
+    if (tCfg) {
+      startW = Number(tCfg.start_weight);
+      goalW = Number(tCfg.goal_weight);
+      targetInfo = computeExerciseDayTarget(
+        tCfg.plan_type,
+        dayNum,
+        dur,
+        startW,
+        goalW,
+        Number(tCfg.increment),
+        tCfg.config
+      );
+      const vals = exLogs.map((l) => metricValueForLog(l, targetMetric)).filter((v) => v !== null);
+      if (vals.length) bestVal = Math.max(...vals);
+      if (latestMetricLog) {
+        latestEval = evaluateLog(block, latestMetricLog, tCfg);
+        pctToGoal = computeNormalizedProgress(metricValueForLog(latestMetricLog, targetMetric), startW, goalW);
+        pcts.push(pctToGoal);
+      }
+      if (todayLog) todayEval = evaluateLog(block, todayLog, tCfg);
+    } else if (exLogs.length) {
+      const vals = exLogs.map((l) => metricValueForLog(l, "working_weight")).filter((v) => v !== null);
+      if (vals.length) bestVal = Math.max(...vals);
+    }
+
+    return {
+      block_exercise_id: ex.id,
+      name: ex.name,
+      slug: ex.slug,
+      default_increment: ex.default_increment,
+      has_target: Boolean(tCfg),
+      plan_type: tCfg ? tCfg.plan_type : plan ? plan.plan_type : null,
+      target_metric: targetMetric,
+      start_weight: startW,
+      goal_weight: goalW,
+      increment: tCfg ? Number(tCfg.increment) : ex.default_increment,
+      today_target: targetInfo,
+      today_log: todayLog,
+      today_eval: todayEval,
+      latest_log: latestLog,
+      latest_metric_log: latestMetricLog,
+      latest_1rm: latest1rm,
+      latest_eval: latestEval,
+      best_value: bestVal,
+      logged_this_week: weekLogs.length > 0,
+      pct_to_goal: pctToGoal,
+    };
+  });
+
+  const latestBw = bwLogs[bwLogs.length - 1] || null;
+  const todayBw = [...bwLogs].reverse().find((b) => b.log_date === todayStr) || null;
+  const bwCard = {
+    enabled: Boolean(block.track_bodyweight),
+    has_target: Boolean(plan && plan.bodyweight_start != null && plan.bodyweight_goal != null),
+    start: plan ? plan.bodyweight_start : null,
+    goal: plan ? plan.bodyweight_goal : null,
+    today_target: null,
+    latest_log: latestBw,
+    today_log: todayBw,
+    evaluation: null,
+  };
+  if (bwCard.enabled && bwCard.has_target) {
+    bwCard.today_target = computeBodyweightDayTarget(dayNum, dur, plan.bodyweight_start, plan.bodyweight_goal);
+    const refBw = todayBw || latestBw;
+    if (refBw) {
+      bwCard.evaluation = evaluateBodyweightAgainstTarget(
+        refBw.weight,
+        bwCard.today_target,
+        plan.bodyweight_start,
+        plan.bodyweight_goal
+      );
+    }
+  }
+
+  let totalKg = 0;
+  let totalPrs = 0;
+  let targetsHit = 0;
+  let targetsTotal = 0;
+  for (const l of logs) {
+    totalKg += l.total_volume > 0 ? Number(l.total_volume) : Number(l.working_weight ?? l.one_rm ?? 0);
+    if (l.is_pr) totalPrs += 1;
+    const ev = evaluateLog(block, l, targetsByEx.get(l.block_exercise_id));
+    if (ev && ev.hit !== null && ev.hit !== undefined) {
+      targetsTotal += 1;
+      if (ev.hit) targetsHit += 1;
+    }
+  }
+
+  const exMap = new Map(exercises.map((e) => [e.id, e]));
+  const recentLogs = [...logs]
+    .slice(-15)
+    .reverse()
+    .map((l) => {
+      const ex = exMap.get(l.block_exercise_id);
+      return {
+        ...l,
+        exercise_name: ex ? ex.name : "Lift",
+        exercise_slug: ex ? ex.slug : "lift",
+        day_number: clampedDayIndex(block.start_date, l.log_date, dur),
+        evaluation: evaluateLog(block, l, targetsByEx.get(l.block_exercise_id)),
+      };
+    });
+
+  return {
+    block: { ...block },
+    time: timeMeta,
+    has_plan: Boolean(plan),
+    plan,
+    today_cards: todayCards,
+    bodyweight_card: bwCard,
+    stats: {
+      total_kg_lifted: Math.round(totalKg * 10) / 10,
+      sessions_logged: new Set(logs.map((l) => l.log_date)).size,
+      streak_weeks: weeklyStreak(block, logs, currentWeek),
+      total_prs: totalPrs,
+      targets_hit: targetsHit,
+      targets_total: targetsTotal,
+      hit_rate_pct: targetsTotal > 0 ? Math.round((targetsHit / targetsTotal) * 1000) / 10 : null,
+      avg_pct_to_goal: pcts.length ? Math.round((pcts.reduce((a, b) => a + b, 0) / pcts.length) * 10) / 10 : 0,
+    },
+    recent_logs: recentLogs,
+  };
+}
+
+function computeChartsFromStore(store, blockId, todayStr = todayIso()) {
+  const block = requireBlock(store, blockId);
+  const timeMeta = blockTimeMeta(block, todayStr);
+  const dur = timeMeta.total_days;
+
+  const exercises = store.block_exercises
+    .filter((e) => e.block_id === block.id)
+    .sort((a, b) => a.sort_order - b.sort_order);
+  const plan = store.plans.find((p) => p.block_id === block.id) || null;
+  const targetsByEx = new Map();
+  if (plan) {
+    for (const t of store.exercise_targets) {
+      if (t.member_plan_id === plan.id) targetsByEx.set(t.block_exercise_id, t);
+    }
+  }
+  const logs = store.workout_logs
+    .filter((l) => l.block_id === block.id)
+    .sort((a, b) => a.log_date.localeCompare(b.log_date));
+  const bwLogs = store.bodyweight_logs
+    .filter((b) => b.block_id === block.id)
+    .sort((a, b) => a.log_date.localeCompare(b.log_date));
+
+  const exerciseCharts = exercises.map((ex) => {
+    const tCfg = targetsByEx.get(ex.id) || null;
+    const exLogs = logs.filter((l) => l.block_exercise_id === ex.id);
+    const targetSeries = [];
+    if (tCfg) {
+      for (let d = 1; d <= dur; d += 1) {
+        const ti = computeExerciseDayTarget(
+          tCfg.plan_type,
+          d,
+          dur,
+          tCfg.start_weight,
+          tCfg.goal_weight,
+          tCfg.increment,
+          tCfg.config
+        );
+        targetSeries.push({
+          day: d,
+          date: dayToDateStr(block.start_date, d),
+          target: ti.target,
+          secondary_target: ti.secondary_target,
+        });
+      }
+    }
+    const actualPoints = exLogs.map((l) => {
+      const dIdx = clampedDayIndex(block.start_date, l.log_date, dur);
+      const ev = evaluateLog(block, l, tCfg);
+      const metric = tCfg ? tCfg.target_metric : "working_weight";
+      const val = metricValueForLog(l, metric);
+      return {
+        log_id: l.id,
+        day: dIdx,
+        date: l.log_date,
+        working_weight: l.working_weight,
+        one_rm: l.one_rm,
+        estimated_1rm: l.estimated_1rm,
+        metric_value: val,
+        target: ev ? ev.target : null,
+        delta: ev ? ev.delta : null,
+        status: ev ? ev.status : "logged",
+        hit: ev ? ev.hit : true,
+        is_pr: Boolean(l.is_pr),
+        normalized_pct: tCfg && val !== null ? computeNormalizedProgress(val, tCfg.start_weight, tCfg.goal_weight) : null,
+      };
+    });
+    return {
+      block_exercise_id: ex.id,
+      name: ex.name,
+      slug: ex.slug,
+      has_target: Boolean(tCfg),
+      plan_type: tCfg ? tCfg.plan_type : null,
+      target_metric: tCfg ? tCfg.target_metric : "working_weight",
+      start_weight: tCfg ? Number(tCfg.start_weight) : null,
+      goal_weight: tCfg ? Number(tCfg.goal_weight) : null,
+      target_series: targetSeries,
+      actual_points: actualPoints,
+    };
+  });
+
+  const bwEnabled = Boolean(block.track_bodyweight);
+  const hasBwTarget = Boolean(
+    bwEnabled && plan && plan.bodyweight_start != null && plan.bodyweight_goal != null
+  );
+  const bwTargetSeries = [];
+  if (hasBwTarget) {
+    for (let d = 1; d <= dur; d += 1) {
+      bwTargetSeries.push({
+        day: d,
+        date: dayToDateStr(block.start_date, d),
+        target: computeBodyweightDayTarget(d, dur, plan.bodyweight_start, plan.bodyweight_goal),
+      });
+    }
+  }
+  const bwActualPoints = bwLogs.map((b) => {
+    const dIdx = clampedDayIndex(block.start_date, b.log_date, dur);
+    let tVal = null;
+    let onTrack = true;
+    if (hasBwTarget) {
+      tVal = computeBodyweightDayTarget(dIdx, dur, plan.bodyweight_start, plan.bodyweight_goal);
+      onTrack = evaluateBodyweightAgainstTarget(
+        b.weight,
+        tVal,
+        plan.bodyweight_start,
+        plan.bodyweight_goal
+      ).on_track;
+    }
+    return {
+      day: dIdx,
+      date: b.log_date,
+      weight: b.weight,
+      target: tVal,
+      delta: tVal !== null ? Math.round((Number(b.weight) - tVal) * 100) / 100 : null,
+      on_track: onTrack,
+    };
+  });
+
+  return {
+    block_id: block.id,
+    start_date: block.start_date,
+    duration_days: dur,
+    current_day: timeMeta.day_number,
+    exercises: exerciseCharts,
+    bodyweight: {
+      enabled: bwEnabled,
+      has_target: hasBwTarget,
+      start: plan ? plan.bodyweight_start : null,
+      goal: plan ? plan.bodyweight_goal : null,
+      target_series: bwTargetSeries,
+      actual_points: bwActualPoints,
+    },
+  };
+}

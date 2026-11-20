@@ -14,6 +14,8 @@ export const COMPANIONS = [
   { id: "gorilla", label: "Gorilla", preview: "./assets/companions/gorilla-squat.gif" },
 ];
 
+export const REACTION_EMOJIS = ["🔥", "💪", "👏", "🏆", "❤️"];
+
 const VALID_THEME_IDS = new Set(THEMES.map((t) => t.id));
 const VALID_COMPANION_IDS = new Set(COMPANIONS.map((c) => c.id));
 const initialTheme = localStorage.getItem("pairlift_theme");
@@ -31,6 +33,25 @@ export const state = {
   selectedChartSlug: null,
   showOneRmOverlay: true,
   planPresets: [],
+  cloud: {
+    available: true,
+    signedIn: false,
+    email: null,
+    authUserId: null,
+    syncing: false,
+    lastSyncedAt: null,
+    error: null,
+  },
+  partner: {
+    linked: false,
+    profile: null,
+    inviteCode: null,
+    inviteExpiresAt: null,
+    overview: null,
+    selectedChartSlug: null,
+    showOneRmOverlay: true,
+    loading: false,
+  },
   cache: {
     dashboard: null,
     weekly: null,

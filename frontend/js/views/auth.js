@@ -5,7 +5,10 @@
  */
 
 import { IS_LOCAL_MODE, api } from "../api.js";
+import { cloud } from "../cloud.js";
 import { applyTheme, escapeHtml, renderThemePillGroupHtml, showToast, state } from "../state.js";
+
+const GOOGLE_ICON_SVG = `<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="#34A853" d="M12 24c2.75 0 5.06-.91 6.75-2.46l-3.3-2.56c-.91.61-2.08.97-3.45.97-2.65 0-4.9-1.79-5.7-4.2H2.51v2.64A12 12 0 0 0 12 24z"/><path fill="#4285F4" d="M23.5 12.27c0-.79-.07-1.54-.2-2.27H12v4.3h6.46a5.52 5.52 0 0 1-2.4 3.63l3.3 2.56c1.93-1.78 3.14-4.41 3.14-8.22z"/><path fill="#FBBC05" d="M5.92 14.35a7.2 7.2 0 0 1 0-4.7V7.01H2.51a12 12 0 0 0 0 9.98l3.41-2.64z"/><path fill="#EA4335" d="M12 4.75c1.5 0 2.84.52 3.9 1.52l2.92-2.92C17.05 1.7 14.74.75 12 .75A12 12 0 0 0 2.51 7.01l3.41 2.64C6.72 7.24 9.15 4.75 12 4.75z"/></svg>`;
 
 const SWATCHES = ["#FF6B57", "#3B82F6", "#F472B6", "#2DD4BF", "#FBBF24", "#A78BFA"];
 
@@ -22,9 +25,21 @@ export function renderAuthView(containerEl, onAuthenticated) {
             <img src="./icons/icon.svg" alt="PairLift" style="width:44px;height:44px;border-radius:11px;" />
             <div>
               <h1 style="margin:0;font-size:22px;letter-spacing:-0.02em;">PairLift</h1>
-              <div class="muted small">Powerlifting blocks, daily targets & share cards</div>
+              <div class="muted small">Powerlifting blocks, daily targets &amp; share cards</div>
             </div>
           </div>
+
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <button type="button" class="btn btn-google btn-block" id="btn-google-signin">
+              ${GOOGLE_ICON_SVG}
+              <span>Continue with Google</span>
+            </button>
+            <div class="small muted" style="text-align:center;">
+              Cloud backup, multi-device sync &amp; partner progress
+            </div>
+          </div>
+
+          <div class="auth-divider"><span>or use offline on this device</span></div>
 
           <div class="form-field">
             <label for="local-name">Your Name (shown on exported Share Cards)</label>
@@ -80,6 +95,21 @@ export function renderAuthView(containerEl, onAuthenticated) {
       btn.addEventListener("click", () => {
         applyTheme(btn.getAttribute("data-theme-pick"));
         renderLocalWelcome();
+      });
+    }
+
+    const gBtn = containerEl.querySelector("#btn-google-signin");
+    if (gBtn) {
+      gBtn.addEventListener("click", async () => {
+        gBtn.disabled = true;
+        gBtn.querySelector("span").textContent = "Redirecting to Google…";
+        try {
+          await cloud.signInWithGoogle();
+        } catch (err) {
+          gBtn.disabled = false;
+          gBtn.querySelector("span").textContent = "Continue with Google";
+          showToast(err.message || "Google sign-in unavailable offline", true);
+        }
       });
     }
 
