@@ -1,13 +1,13 @@
-const CACHE_NAME = "pairlift-shell-v5";
+const CACHE_NAME = "pairlift-shell-v6";
 const SHELL_ASSETS = [
   "./",
   "./index.html",
   "./manifest.webmanifest",
-  "./css/styles.css?v=5",
+  "./css/styles.css?v=6",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
   "./icons/icon.svg",
-  "./js/app.js?v=5",
+  "./js/app.js?v=6",
   "./js/api.js",
   "./js/localStore.js",
   "./js/plansEngine.js",

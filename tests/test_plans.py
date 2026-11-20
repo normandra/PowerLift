@@ -136,3 +136,31 @@ def test_epley_sets_summary_and_evaluations():
     assert bw_cut_ok["on_track"] is True
     bw_cut_bad = evaluate_bodyweight_against_target(68.0, 67.0, 68.4, 66.0)
     assert bw_cut_bad["on_track"] is False
+
+
+def test_working_weight_target_does_not_fallback_to_1rm():
+    from backend.plans import evaluate_lift_against_target
+
+    t_info = {"target": 35.0, "secondary_target": None, "prescription": "Target 35 kg", "phase": "Week 2"}
+    ev = evaluate_lift_against_target(
+        actual_working=None,
+        actual_1rm=85.0,
+        est_1rm=None,
+        target_info=t_info,
+        target_metric="working_weight",
+    )
+    assert ev["actual_value"] is None
+    assert ev["delta"] is None
+    assert ev["hit"] is None
+    assert ev["status"] == "1rm_only"
+
+    ev_1rm = evaluate_lift_against_target(
+        actual_working=50.0,
+        actual_1rm=None,
+        est_1rm=None,
+        target_info={"target": 80.0},
+        target_metric="one_rm",
+    )
+    assert ev_1rm["actual_value"] is None
+    assert ev_1rm["hit"] is None
+    assert ev_1rm["status"] == "unlogged"

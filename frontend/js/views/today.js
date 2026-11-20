@@ -49,10 +49,14 @@ export function renderTodayView(containerEl, actions) {
             </div>
           </div>
           ${
-            c.today_eval
+            c.today_eval && c.today_eval.hit !== null && c.today_eval.hit !== undefined
               ? statusBadge(c.today_eval.status, c.today_eval.delta)
               : c.latest_eval
               ? statusBadge(c.latest_eval.status, c.latest_eval.delta)
+              : c.today_eval
+              ? statusBadge(c.today_eval.status, c.today_eval.delta)
+              : c.latest_1rm !== null && c.latest_1rm !== undefined
+              ? statusBadge("1rm_only")
               : `<span class="badge badge-unlogged">${c.logged_this_week ? "Logged this wk" : "Open"}</span>`
           }
         </div>
@@ -87,8 +91,12 @@ export function renderTodayView(containerEl, actions) {
         }
 
         ${
-          c.latest_log
-            ? `<div class="small muted">Latest: <strong style="color:var(--text)">${escapeHtml(fmtKg(c.latest_log.working_weight ?? c.latest_log.one_rm ?? c.latest_log.estimated_1rm))}</strong> on ${escapeHtml(c.latest_log.log_date)}${c.latest_log.one_rm || c.latest_log.estimated_1rm ? ` · 1RM ${escapeHtml(fmtKg(c.latest_log.one_rm || c.latest_log.estimated_1rm))}` : ""}</div>`
+          c.latest_metric_log
+            ? `<div class="small muted">Latest: <strong style="color:var(--text)">${escapeHtml(fmtKg(c.target_metric === "one_rm" ? (c.latest_metric_log.one_rm ?? c.latest_metric_log.estimated_1rm) : c.latest_metric_log.working_weight))}</strong> on ${escapeHtml(c.latest_metric_log.log_date)}${c.latest_1rm !== null && c.latest_1rm !== undefined ? ` · 1RM ${escapeHtml(fmtKg(c.latest_1rm))}` : ""}</div>`
+            : c.latest_1rm !== null && c.latest_1rm !== undefined && c.latest_log
+            ? `<div class="small muted">Latest 1RM: <strong style="color:var(--text)">${escapeHtml(fmtKg(c.latest_1rm))}</strong> on ${escapeHtml(c.latest_log.log_date)}</div>`
+            : c.latest_log
+            ? `<div class="small muted">Latest: <strong style="color:var(--text)">Logged</strong> on ${escapeHtml(c.latest_log.log_date)}</div>`
             : `<div class="small dim">Tap Log whenever you train ${escapeHtml(c.name)}</div>`
         }
       </div>

@@ -102,6 +102,9 @@ export function statusBadge(status, delta = null) {
   if (status === "off_pace") {
     return `<span class="badge badge-off_pace">⚡ Off pace</span>`;
   }
+  if (status === "1rm_only") {
+    return `<span class="badge badge-on_pace">1RM Logged</span>`;
+  }
   if (status === "logged") {
     return `<span class="badge badge-on_pace">Logged</span>`;
   }

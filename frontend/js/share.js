@@ -338,12 +338,15 @@ function renderShareCardToCanvas(canvas, opts) {
     ctx.fillStyle = pal.text;
     ctx.fillText(card ? card.name : "Lift", pad, y);
 
-    const latestVal = card?.latest_log
-      ? card.latest_log.working_weight ?? card.latest_log.one_rm ?? card.latest_log.estimated_1rm
+    const metricLog = card?.latest_metric_log ?? card?.latest_log;
+    const latestVal = metricLog
+      ? card?.target_metric === "one_rm"
+        ? metricLog.one_rm ?? metricLog.estimated_1rm
+        : metricLog.working_weight
       : null;
-    const latest1Rm = card?.latest_log
-      ? card.latest_log.one_rm ?? card.latest_log.estimated_1rm
-      : null;
+    const latest1Rm =
+      card?.latest_1rm ??
+      (card?.latest_log ? card.latest_log.one_rm ?? card.latest_log.estimated_1rm : null);
 
     if (card?.latest_eval) {
       const ev = card.latest_eval;
@@ -482,8 +485,11 @@ function renderShareCardToCanvas(canvas, opts) {
       ctx.fillStyle = pal.primary;
       ctx.fillText(c.has_target ? `${c.pct_to_goal}%` : "Open", lx + liftW - 24, ly + 26);
 
-      const curVal = c.latest_log
-        ? c.latest_log.working_weight ?? c.latest_log.one_rm ?? c.latest_log.estimated_1rm
+      const metricLog = c.latest_metric_log ?? c.latest_log;
+      const curVal = metricLog
+        ? c.target_metric === "one_rm"
+          ? metricLog.one_rm ?? metricLog.estimated_1rm
+          : metricLog.working_weight
         : null;
       ctx.textAlign = "left";
       ctx.font = `800 ${isStory ? 40 : 34}px ${FONT_STACK}`;

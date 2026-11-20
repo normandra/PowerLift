@@ -180,9 +180,9 @@ function evaluateLog(block, log, targetCfg) {
 
 function metricValueForLog(log, targetMetric) {
   if (targetMetric === "one_rm") {
-    return log.one_rm ?? log.estimated_1rm ?? log.working_weight ?? null;
+    return log.one_rm ?? log.estimated_1rm ?? null;
   }
-  return log.working_weight ?? log.one_rm ?? log.estimated_1rm ?? null;
+  return log.working_weight ?? null;
 }
 
 function weeklyStreak(block, logs, currentWeek) {
@@ -822,7 +822,19 @@ export const localStore = {
     const todayCards = exercises.map((ex) => {
       const tCfg = targetsByEx.get(ex.id) || null;
       const exLogs = logs.filter((l) => l.block_exercise_id === ex.id);
+      const targetMetric = tCfg ? tCfg.target_metric || "working_weight" : "working_weight";
       const latestLog = exLogs[exLogs.length - 1] || null;
+      const latestMetricLog =
+        [...exLogs].reverse().find((l) => metricValueForLog(l, targetMetric) !== null) || null;
+      const latest1rmLog =
+        [...exLogs]
+          .reverse()
+          .find(
+            (l) =>
+              (l.one_rm !== null && l.one_rm !== undefined) ||
+              (l.estimated_1rm !== null && l.estimated_1rm !== undefined)
+          ) || null;
+      const latest1rm = latest1rmLog ? latest1rmLog.one_rm ?? latest1rmLog.estimated_1rm : null;
       const todayLog = [...exLogs].reverse().find((l) => l.log_date === todayStr) || null;
       const weekLogs = exLogs.filter(
         (l) => Math.floor((clampedDayIndex(block.start_date, l.log_date, dur) - 1) / 7) + 1 === currentWeek
@@ -832,13 +844,11 @@ export const localStore = {
       let latestEval = null;
       let todayEval = null;
       let pctToGoal = 0;
-      let targetMetric = "working_weight";
       let startW = null;
       let goalW = null;
       let bestVal = null;
 
       if (tCfg) {
-        targetMetric = tCfg.target_metric || "working_weight";
         startW = Number(tCfg.start_weight);
         goalW = Number(tCfg.goal_weight);
         targetInfo = computeExerciseDayTarget(
@@ -852,9 +862,9 @@ export const localStore = {
         );
         const vals = exLogs.map((l) => metricValueForLog(l, targetMetric)).filter((v) => v !== null);
         if (vals.length) bestVal = Math.max(...vals);
-        if (latestLog) {
-          latestEval = evaluateLog(block, latestLog, tCfg);
-          pctToGoal = computeNormalizedProgress(metricValueForLog(latestLog, targetMetric), startW, goalW);
+        if (latestMetricLog) {
+          latestEval = evaluateLog(block, latestMetricLog, tCfg);
+          pctToGoal = computeNormalizedProgress(metricValueForLog(latestMetricLog, targetMetric), startW, goalW);
           pcts.push(pctToGoal);
         }
         if (todayLog) todayEval = evaluateLog(block, todayLog, tCfg);
@@ -878,6 +888,8 @@ export const localStore = {
         today_log: todayLog,
         today_eval: todayEval,
         latest_log: latestLog,
+        latest_metric_log: latestMetricLog,
+        latest_1rm: latest1rm,
         latest_eval: latestEval,
         best_value: bestVal,
         logged_this_week: weekLogs.length > 0,
@@ -918,7 +930,7 @@ export const localStore = {
       totalKg += l.total_volume > 0 ? Number(l.total_volume) : Number(l.working_weight ?? l.one_rm ?? 0);
       if (l.is_pr) totalPrs += 1;
       const ev = evaluateLog(block, l, targetsByEx.get(l.block_exercise_id));
-      if (ev) {
+      if (ev && ev.hit !== null && ev.hit !== undefined) {
         targetsTotal += 1;
         if (ev.hit) targetsHit += 1;
       }
@@ -997,7 +1009,7 @@ export const localStore = {
     const prs = [];
     for (const l of logsWeek) {
       const ev = evaluateLog(block, l, targetsByEx.get(l.block_exercise_id));
-      if (ev) {
+      if (ev && ev.hit !== null && ev.hit !== undefined) {
         if (ev.hit) targetsHit += 1;
         else targetsMissed += 1;
       }
@@ -1046,13 +1058,23 @@ export const localStore = {
         : null;
       let bestLog = null;
       let bestEval = null;
+      let bestOneRm = null;
       if (exWeekLogs.length) {
         const metric = tCfg ? tCfg.target_metric : "working_weight";
-        bestLog = exWeekLogs.reduce((best, cur) =>
-          (metricValueForLog(cur, metric) || 0) >= (metricValueForLog(best, metric) || 0) ? cur : best
-        );
-        bestEval = evaluateLog(block, bestLog, tCfg);
+        const metricLogs = exWeekLogs.filter((l) => metricValueForLog(l, metric) !== null);
+        if (metricLogs.length) {
+          bestLog = metricLogs.reduce((best, cur) =>
+            metricValueForLog(cur, metric) >= metricValueForLog(best, metric) ? cur : best
+          );
+          bestEval = evaluateLog(block, bestLog, tCfg);
+        }
+        const ormVals = exWeekLogs
+          .map((l) => l.one_rm ?? l.estimated_1rm)
+          .filter((v) => v !== null && v !== undefined)
+          .map(Number);
+        if (ormVals.length) bestOneRm = Math.max(...ormVals);
       }
+      const hasOnly1rm = !bestLog && bestOneRm !== null;
       return {
         block_exercise_id: ex.id,
         exercise_name: ex.name,
@@ -1060,8 +1082,14 @@ export const localStore = {
         week_target: weekTargetInfo ? weekTargetInfo.target : null,
         prescription: weekTargetInfo ? weekTargetInfo.prescription : null,
         best_working_weight: bestLog ? bestLog.working_weight : null,
-        best_one_rm: bestLog ? (bestLog.one_rm ?? bestLog.estimated_1rm) : null,
-        status: bestEval ? bestEval.status : bestLog ? "logged" : "unlogged",
+        best_one_rm: bestOneRm,
+        status: bestEval
+          ? bestEval.status
+          : bestLog
+          ? "logged"
+          : hasOnly1rm
+          ? "1rm_only"
+          : "unlogged",
         delta: bestEval ? bestEval.delta : null,
       };
     });
@@ -1157,7 +1185,7 @@ export const localStore = {
           status: ev ? ev.status : "logged",
           hit: ev ? ev.hit : true,
           is_pr: Boolean(l.is_pr),
-          normalized_pct: tCfg ? computeNormalizedProgress(val, tCfg.start_weight, tCfg.goal_weight) : null,
+          normalized_pct: tCfg && val !== null ? computeNormalizedProgress(val, tCfg.start_weight, tCfg.goal_weight) : null,
         };
       });
       return {

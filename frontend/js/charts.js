@@ -160,24 +160,35 @@ export function renderTargetVsActualChart(containerEl, exerciseChart, totalDays,
   const tooltipPts = [];
   let dotsHtml = "";
   for (const a of actuals) {
-    if (a.metric_value === null || a.metric_value === undefined) continue;
     const cx = xOf(a.day);
-    const cy = yOf(a.metric_value);
-    const col = a.hit ? "#34D399" : tc.primary;
     const orm = a.one_rm ?? a.estimated_1rm;
-    const idx = tooltipPts.length;
-    tooltipPts.push({
-      html: `
-        <div><strong>Day ${a.day}</strong> <span class="muted">(${escapeHtml(a.date)})</span></div>
-        <div>Logged: <strong>${escapeHtml(fmtKg(a.metric_value))}</strong></div>
-        ${a.target !== null && a.target !== undefined ? `<div>Target: ${escapeHtml(fmtKg(a.target))} (${escapeHtml(fmtDelta(a.delta))})</div>` : ""}
-        ${orm ? `<div>1RM / Est: ${escapeHtml(fmtKg(orm))}</div>` : ""}
-      `,
-    });
-    dotsHtml += `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="5.5" fill="${escapeHtml(col)}" stroke="#0B0D11" stroke-width="2" data-pt-idx="${idx}" style="cursor:pointer"/>`;
-    if (show1Rm && orm != null) {
+    if (a.metric_value !== null && a.metric_value !== undefined) {
+      const cy = yOf(a.metric_value);
+      const col = a.hit === null || a.hit === undefined ? tc.secondary : a.hit ? "#34D399" : tc.primary;
+      const idx = tooltipPts.length;
+      tooltipPts.push({
+        html: `
+          <div><strong>Day ${a.day}</strong> <span class="muted">(${escapeHtml(a.date)})</span></div>
+          <div>Logged: <strong>${escapeHtml(fmtKg(a.metric_value))}</strong></div>
+          ${a.target !== null && a.target !== undefined ? `<div>Target: ${escapeHtml(fmtKg(a.target))} (${escapeHtml(fmtDelta(a.delta))})</div>` : ""}
+          ${orm != null ? `<div>1RM / Est: ${escapeHtml(fmtKg(orm))}</div>` : ""}
+        `,
+      });
+      dotsHtml += `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="5.5" fill="${escapeHtml(col)}" stroke="#0B0D11" stroke-width="2" data-pt-idx="${idx}" style="cursor:pointer"/>`;
+      if (show1Rm && orm != null) {
+        const oy = yOf(orm);
+        dotsHtml += `<circle cx="${cx.toFixed(1)}" cy="${oy.toFixed(1)}" r="3.5" fill="#FBBF24" opacity="0.9"/>`;
+      }
+    } else if (show1Rm && orm != null) {
+      const idx = tooltipPts.length;
+      tooltipPts.push({
+        html: `
+          <div><strong>Day ${a.day}</strong> <span class="muted">(${escapeHtml(a.date)})</span></div>
+          <div>1RM / Est: <strong>${escapeHtml(fmtKg(orm))}</strong></div>
+        `,
+      });
       const oy = yOf(orm);
-      dotsHtml += `<circle cx="${cx.toFixed(1)}" cy="${oy.toFixed(1)}" r="3.5" fill="#FBBF24" opacity="0.9"/>`;
+      dotsHtml += `<circle cx="${cx.toFixed(1)}" cy="${oy.toFixed(1)}" r="4.5" fill="#FBBF24" stroke="#0B0D11" stroke-width="1.5" data-pt-idx="${idx}" style="cursor:pointer"/>`;
     }
   }
 

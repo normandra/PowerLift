@@ -259,17 +259,18 @@ def evaluate_lift_against_target(
     """Compare a logged lift against the day's target."""
     target = float(target_info["target"])
     if target_metric == "one_rm":
-        actual_val = actual_1rm if actual_1rm is not None else (est_1rm if est_1rm is not None else actual_working)
+        actual_val = actual_1rm if actual_1rm is not None else est_1rm
     else:
-        actual_val = actual_working if actual_working is not None else (actual_1rm if actual_1rm is not None else est_1rm)
+        actual_val = actual_working
 
     if actual_val is None:
+        has_1rm = actual_1rm is not None or est_1rm is not None
         return {
             "actual_value": None,
             "target": target,
             "delta": None,
-            "status": "unlogged",
-            "hit": False,
+            "status": "1rm_only" if has_1rm else "unlogged",
+            "hit": None,
         }
 
     delta = round(float(actual_val) - target, 2)

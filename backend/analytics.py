@@ -146,16 +146,8 @@ def _evaluate_log(
 
 def _metric_value_for_log(log: Dict[str, Any], target_metric: str) -> Optional[float]:
     if target_metric == "one_rm":
-        return (
-            log["one_rm"]
-            if log.get("one_rm") is not None
-            else (log["estimated_1rm"] if log.get("estimated_1rm") is not None else log.get("working_weight"))
-        )
-    return (
-        log["working_weight"]
-        if log.get("working_weight") is not None
-        else (log["one_rm"] if log.get("one_rm") is not None else log.get("estimated_1rm"))
-    )
+        return log["one_rm"] if log.get("one_rm") is not None else log.get("estimated_1rm")
+    return log.get("working_weight")
 
 
 def _weekly_streak(
@@ -208,7 +200,29 @@ def get_block_dashboard(
         ex_id = ex["id"]
         t_cfg = targets_by_ex.get(ex_id)
         ex_logs = [l for l in logs if l["block_exercise_id"] == ex_id]
+        target_metric = t_cfg.get("target_metric", "working_weight") if t_cfg else "working_weight"
         latest_log = ex_logs[-1] if ex_logs else None
+        latest_metric_log = next(
+            (l for l in reversed(ex_logs) if _metric_value_for_log(l, target_metric) is not None),
+            None,
+        )
+        latest_1rm_log = next(
+            (
+                l
+                for l in reversed(ex_logs)
+                if l.get("one_rm") is not None or l.get("estimated_1rm") is not None
+            ),
+            None,
+        )
+        latest_1rm = (
+            (
+                latest_1rm_log["one_rm"]
+                if latest_1rm_log.get("one_rm") is not None
+                else latest_1rm_log.get("estimated_1rm")
+            )
+            if latest_1rm_log
+            else None
+        )
         today_log = next((l for l in reversed(ex_logs) if l["log_date"] == today_str), None)
 
         week_logs = [
@@ -222,13 +236,11 @@ def get_block_dashboard(
         latest_eval = None
         today_eval = None
         pct_to_goal = 0.0
-        target_metric = "working_weight"
         start_w = None
         goal_w = None
         best_val = None
 
         if t_cfg:
-            target_metric = t_cfg.get("target_metric", "working_weight")
             start_w = float(t_cfg["start_weight"])
             goal_w = float(t_cfg["goal_weight"])
             target_info = compute_exercise_day_target(
@@ -243,9 +255,9 @@ def get_block_dashboard(
             vals = [v for v in (_metric_value_for_log(l, target_metric) for l in ex_logs) if v is not None]
             if vals:
                 best_val = max(vals)
-            if latest_log:
-                latest_eval = _evaluate_log(block, latest_log, t_cfg)
-                cur_val = _metric_value_for_log(latest_log, target_metric)
+            if latest_metric_log:
+                latest_eval = _evaluate_log(block, latest_metric_log, t_cfg)
+                cur_val = _metric_value_for_log(latest_metric_log, target_metric)
                 pct_to_goal = compute_normalized_progress(cur_val, start_w, goal_w)
                 pcts.append(pct_to_goal)
             if today_log:
@@ -271,6 +283,8 @@ def get_block_dashboard(
                 "today_log": today_log,
                 "today_eval": today_eval,
                 "latest_log": latest_log,
+                "latest_metric_log": latest_metric_log,
+                "latest_1rm": latest_1rm,
                 "latest_eval": latest_eval,
                 "best_value": best_val,
                 "logged_this_week": len(week_logs) > 0,
@@ -322,7 +336,7 @@ def get_block_dashboard(
         if l.get("is_pr"):
             total_prs += 1
         ev = _evaluate_log(block, l, targets_by_ex.get(l["block_exercise_id"]))
-        if ev:
+        if ev and ev["hit"] is not None:
             targets_total += 1
             if ev["hit"]:
                 targets_hit += 1
@@ -419,7 +433,7 @@ def get_weekly_recap(
     for l in logs_week:
         t_cfg = targets_by_ex.get(l["block_exercise_id"])
         ev = _evaluate_log(block, l, t_cfg)
-        if ev:
+        if ev and ev["hit"] is not None:
             if ev["hit"]:
                 targets_hit += 1
             else:
@@ -480,14 +494,25 @@ def get_weekly_recap(
             )
         best_log = None
         best_eval = None
+        best_one_rm = None
         if ex_week_logs:
             metric = t_cfg.get("target_metric", "working_weight") if t_cfg else "working_weight"
-            best_log = max(
-                ex_week_logs,
-                key=lambda item: _metric_value_for_log(item, metric) or 0.0,
-            )
-            best_eval = _evaluate_log(block, best_log, t_cfg)
+            metric_logs = [l for l in ex_week_logs if _metric_value_for_log(l, metric) is not None]
+            if metric_logs:
+                best_log = max(
+                    metric_logs,
+                    key=lambda item: float(_metric_value_for_log(item, metric) or 0.0),
+                )
+                best_eval = _evaluate_log(block, best_log, t_cfg)
+            orm_vals = [
+                float(l["one_rm"] if l.get("one_rm") is not None else l["estimated_1rm"])
+                for l in ex_week_logs
+                if l.get("one_rm") is not None or l.get("estimated_1rm") is not None
+            ]
+            if orm_vals:
+                best_one_rm = max(orm_vals)
 
+        has_only_1rm = best_log is None and best_one_rm is not None
         exercise_breakdown.append(
             {
                 "block_exercise_id": ex["id"],
@@ -496,10 +521,12 @@ def get_weekly_recap(
                 "week_target": week_target_info["target"] if week_target_info else None,
                 "prescription": week_target_info["prescription"] if week_target_info else None,
                 "best_working_weight": best_log["working_weight"] if best_log else None,
-                "best_one_rm": (
-                    best_log["one_rm"] or best_log["estimated_1rm"] if best_log else None
+                "best_one_rm": best_one_rm,
+                "status": (
+                    best_eval["status"]
+                    if best_eval
+                    else ("logged" if best_log else ("1rm_only" if has_only_1rm else "unlogged"))
                 ),
-                "status": best_eval["status"] if best_eval else ("logged" if best_log else "unlogged"),
                 "delta": best_eval["delta"] if best_eval else None,
             }
         )
@@ -584,7 +611,7 @@ def get_block_charts(
                 compute_normalized_progress(
                     val, float(t_cfg["start_weight"]), float(t_cfg["goal_weight"])
                 )
-                if t_cfg
+                if t_cfg and val is not None
                 else None
             )
             actual_points.append(

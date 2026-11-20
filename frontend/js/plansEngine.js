@@ -244,14 +244,17 @@ export function evaluateLiftAgainstTarget(
   targetMetric = "working_weight"
 ) {
   const target = Number(targetInfo.target);
-  let actualVal;
-  if (targetMetric === "one_rm") {
-    actualVal = actual1rm ?? est1rm ?? actualWorking ?? null;
-  } else {
-    actualVal = actualWorking ?? actual1rm ?? est1rm ?? null;
-  }
+  const actualVal =
+    targetMetric === "one_rm" ? actual1rm ?? est1rm ?? null : actualWorking ?? null;
   if (actualVal === null || actualVal === undefined) {
-    return { actual_value: null, target, delta: null, status: "unlogged", hit: false };
+    const has1rm = actual1rm !== null && actual1rm !== undefined || est1rm !== null && est1rm !== undefined;
+    return {
+      actual_value: null,
+      target,
+      delta: null,
+      status: has1rm ? "1rm_only" : "unlogged",
+      hit: null,
+    };
   }
   const delta = Math.round((Number(actualVal) - target) * 100) / 100;
   const status = delta > 0 ? "beat" : delta === 0 ? "hit" : "missed";
