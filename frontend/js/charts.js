@@ -286,3 +286,152 @@ export function renderBodyweightChart(containerEl, bwSeries, totalDays, currentD
   `;
   attachPointTooltips(containerEl, tooltipPts);
 }
+
+const SPARK_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function parseUtcDateMs(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ""));
+  if (!m) return NaN;
+  return Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+}
+
+function formatShortDate(iso) {
+  const ms = parseUtcDateMs(iso);
+  if (Number.isNaN(ms)) return String(iso || "");
+  const d = new Date(ms);
+  return `${SPARK_MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`;
+}
+
+function shiftIsoDays(iso, deltaDays) {
+  const ms = parseUtcDateMs(iso);
+  const base = Number.isNaN(ms) ? Date.now() : ms;
+  const d = new Date(base + deltaDays * 86400000);
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+export function renderLiftSparklineHtml(exChart, todayDateStr, uniqueKey = "lift") {
+  const pts = (exChart?.actual_points || []).filter(
+    (p) => p.metric_value !== null && p.metric_value !== undefined && !Number.isNaN(Number(p.metric_value))
+  );
+  if (!pts.length) return "";
+
+  const slugAttr = escapeHtml(exChart.slug || "");
+  const cutoffStr = shiftIsoDays(todayDateStr, -14);
+  const recent14 = pts.filter((p) => String(p.date || "") >= cutoffStr);
+
+  if (pts.length === 1) {
+    const only = pts[0];
+    return `
+      <button type="button" class="sparkline-box" data-open-chart="${slugAttr}" title="View full chart">
+        <div class="sparkline-head">
+          <span class="dim">${recent14.length ? "Last 2 wks" : "Recent"} · 1 session</span>
+          <span class="spark-gain spark-gain-flat">${escapeHtml(fmtKg(only.metric_value))}</span>
+        </div>
+        <svg class="sparkline-svg" viewBox="0 0 240 42" role="img" aria-label="Single session trend">
+          <line x1="6" y1="21" x2="232" y2="21" stroke="rgba(255,255,255,0.14)" stroke-width="1.5" stroke-dasharray="4 4"/>
+          <circle cx="119" cy="21" r="4" fill="#2DD4BF" stroke="#0B0D11" stroke-width="1.5"/>
+        </svg>
+        <div class="sparkline-foot">
+          <span>${escapeHtml(formatShortDate(only.date))} · ${escapeHtml(fmtKg(only.metric_value))}</span>
+          <span>Log 1 more session to track gains</span>
+        </div>
+      </button>
+    `;
+  }
+
+  const series = recent14.length >= 2 ? recent14 : pts.slice(-6);
+  const windowLabel = recent14.length >= 2 ? "Last 2 wks" : "Recent";
+  const first = series[0];
+  const last = series[series.length - 1];
+  const firstVal = Number(first.metric_value);
+  const lastVal = Number(last.metric_value);
+  const gain = Math.round((lastVal - firstVal) * 100) / 100;
+  const pct = firstVal > 0 ? Math.round((gain / firstVal) * 1000) / 10 : null;
+
+  let strokeCol = "#2DD4BF";
+  let badgeClass = "spark-gain-flat";
+  let badgeText = "▸ 0 kg (0%)";
+  if (gain > 0) {
+    strokeCol = "#34D399";
+    badgeClass = "spark-gain-up";
+    badgeText = `▲ +${fmtKg(gain)}${pct !== null ? ` (+${pct}%)` : ""}`;
+  } else if (gain < 0) {
+    strokeCol = "#F87171";
+    badgeClass = "spark-gain-down";
+    badgeText = `▼ ${fmtKg(gain)}${pct !== null ? ` (${pct}%)` : ""}`;
+  }
+
+  const W = 240;
+  const H = 52;
+  const pad = { l: 6, r: 8, t: 8, b: 8 };
+  const pw = W - pad.l - pad.r;
+  const ph = H - pad.t - pad.b;
+
+  const vals = series.map((p) => Number(p.metric_value));
+  const rawMin = Math.min(...vals);
+  const rawMax = Math.max(...vals);
+  const rawSpan = rawMax - rawMin;
+  const yMin = rawSpan < 1 ? rawMin - 2.5 : rawMin - rawSpan * 0.18;
+  const yMax = rawSpan < 1 ? rawMax + 2.5 : rawMax + rawSpan * 0.18;
+  const yOf = (v) => pad.t + ph - ((v - yMin) / Math.max(yMax - yMin, 1e-6)) * ph;
+
+  const firstMs = parseUtcDateMs(first.date);
+  const lastMs = parseUtcDateMs(last.date);
+  const msSpan = !Number.isNaN(firstMs) && !Number.isNaN(lastMs) ? lastMs - firstMs : 0;
+
+  const coords = series.map((p, idx) => {
+    let xFrac;
+    if (msSpan > 0) {
+      const ms = parseUtcDateMs(p.date);
+      xFrac = Number.isNaN(ms) ? idx / Math.max(series.length - 1, 1) : (ms - firstMs) / msSpan;
+    } else {
+      xFrac = idx / Math.max(series.length - 1, 1);
+    }
+    return {
+      x: pad.l + xFrac * pw,
+      y: yOf(Number(p.metric_value)),
+    };
+  });
+
+  const lineD = coords.map((pt, i) => `${i === 0 ? "M" : "L"}${pt.x.toFixed(1)},${pt.y.toFixed(1)}`).join(" ");
+  const bottomY = (H - pad.b).toFixed(1);
+  const areaD = `${lineD} L${coords[coords.length - 1].x.toFixed(1)},${bottomY} L${coords[0].x.toFixed(1)},${bottomY} Z`;
+  const baselineY = yOf(firstVal).toFixed(1);
+  const gradId = `spark-grad-${String(uniqueKey || slugAttr || "lift").replace(/[^a-zA-Z0-9_-]/g, "")}`;
+
+  const dotsHtml = coords
+    .map((pt, idx) =>
+      idx === coords.length - 1
+        ? `<circle cx="${pt.x.toFixed(1)}" cy="${pt.y.toFixed(1)}" r="4" fill="${strokeCol}" stroke="#0B0D11" stroke-width="1.5"/>`
+        : `<circle cx="${pt.x.toFixed(1)}" cy="${pt.y.toFixed(1)}" r="2.6" fill="${strokeCol}" opacity="0.85"/>`
+    )
+    .join("");
+
+  return `
+    <button type="button" class="sparkline-box" data-open-chart="${slugAttr}" title="View full chart">
+      <div class="sparkline-head">
+        <span class="dim">${windowLabel} · ${series.length} sessions</span>
+        <span class="spark-gain ${badgeClass}">${escapeHtml(badgeText)}</span>
+      </div>
+      <svg class="sparkline-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="${escapeHtml(exChart.name || "Lift")} recent progression">
+        <defs>
+          <linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="${strokeCol}" stop-opacity="0.28"/>
+            <stop offset="100%" stop-color="${strokeCol}" stop-opacity="0.0"/>
+          </linearGradient>
+        </defs>
+        <line x1="${pad.l}" y1="${baselineY}" x2="${W - pad.r}" y2="${baselineY}" stroke="rgba(255,255,255,0.18)" stroke-width="1" stroke-dasharray="3 3"/>
+        <path d="${areaD}" fill="url(#${gradId})"/>
+        <path d="${lineD}" fill="none" stroke="${strokeCol}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+        ${dotsHtml}
+      </svg>
+      <div class="sparkline-foot">
+        <span class="num">${escapeHtml(formatShortDate(first.date))} · ${escapeHtml(fmtKg(firstVal))}</span>
+        <span class="num">${escapeHtml(formatShortDate(last.date))} · ${escapeHtml(fmtKg(lastVal))}</span>
+      </div>
+    </button>
+  `;
+}

@@ -1182,57 +1182,72 @@ textarea:focus {
   border: 1px solid var(--border-strong);
 }
 
-.companion-pill-group {
-  display: inline-grid;
-  grid-template-columns: repeat(3, auto);
+/* 2-Week Stock Sparkline on Today Cards */
+.sparkline-box {
+  width: 100%;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
   gap: 4px;
   background: var(--surface-2);
-  padding: 4px;
-  border-radius: 10px;
   border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 8px 10px;
+  transition: border-color 0.15s ease, background 0.15s ease;
 }
 
-.companion-pill-btn {
+.sparkline-box:hover,
+.sparkline-box:focus-visible {
+  border-color: var(--border-strong);
+  background: var(--surface-3);
+}
+
+.sparkline-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11.5px;
+}
+
+.spark-gain {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 5px;
-  padding: 4px 8px;
-  border-radius: 7px;
+  font-weight: 700;
   font-size: 11.5px;
-  font-weight: 600;
-  color: var(--text-muted);
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
-.companion-pill-btn img {
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  object-fit: cover;
-  background: #1a2030;
+.spark-gain-up {
+  background: var(--green-soft);
+  color: var(--green);
 }
 
-.companion-pill-btn.active {
-  background: var(--coral-soft);
-  color: var(--text);
-  border: 1px solid var(--accent-border);
+.spark-gain-down {
+  background: var(--crimson-soft);
+  color: var(--crimson);
 }
 
-.sidebar .companion-pill-group {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+.spark-gain-flat {
+  background: var(--mint-soft);
+  color: var(--mint);
+}
+
+.sparkline-svg {
   width: 100%;
+  height: 48px;
+  display: block;
+  overflow: visible;
 }
 
-.sidebar .companion-pill-btn {
-  padding: 4px 4px;
-  gap: 4px;
+.sparkline-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   font-size: 11px;
-  min-width: 0;
-}
-
-.sidebar .companion-pill-btn img {
-  width: 16px;
-  height: 16px;
+  color: var(--text-dim);
 }

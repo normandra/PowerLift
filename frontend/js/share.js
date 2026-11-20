@@ -283,7 +283,7 @@ async function renderShareCardToCanvas(canvas, opts) {
       ? today_cards.find((c) => c.slug === exerciseSlug) || today_cards[0]
       : null;
   const companionImg = spotlightCard
-    ? await loadImageCached(companionImageSrc(spotlightCard.slug || spotlightCard.name))
+    ? await loadImageCached(companionImageSrc(spotlightCard.slug || spotlightCard.name, state.companion, false))
     : null;
 
   const isStory = format === "story";

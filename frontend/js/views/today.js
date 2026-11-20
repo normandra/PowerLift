@@ -3,9 +3,10 @@
  */
 
 import { api } from "../api.js";
+import { renderLiftSparklineHtml } from "../charts.js";
 import { openBodyweightModal, openCreateBlockModal, openLogWorkoutModal } from "../modals.js";
 import { openShareModal } from "../share.js";
-import { companionArtHtml, escapeHtml, fmtKg, renderCompanionPillGroupHtml, showToast, state, statusBadge } from "../state.js";
+import { companionArtHtml, escapeHtml, fmtKg, showToast, state, statusBadge } from "../state.js";
 
 export function renderTodayView(containerEl, actions) {
   const dash = state.cache.dashboard;
@@ -24,6 +25,9 @@ export function renderTodayView(containerEl, actions) {
   }
 
   const { block, time, has_plan, today_cards, bodyweight_card, stats, recent_logs } = dash;
+  const chartList = state.cache.charts?.exercises || [];
+  const chartsByExId = new Map(chartList.map((e) => [String(e.block_exercise_id), e]));
+  const chartsBySlug = new Map(chartList.map((e) => [String(e.slug), e]));
 
   const setupPlanBanner = !has_plan
     ? `
@@ -38,8 +42,9 @@ export function renderTodayView(containerEl, actions) {
     : "";
 
   const todayCardsHtml = today_cards
-    .map(
-      (c) => `
+    .map((c, idx) => {
+      const exChart = chartsByExId.get(String(c.block_exercise_id)) || chartsBySlug.get(String(c.slug)) || null;
+      return `
       <div class="lift-card">
         <div class="row-between">
           <div class="lift-card-head">
@@ -79,6 +84,8 @@ export function renderTodayView(containerEl, actions) {
           <button class="btn btn-primary btn-sm" data-log-ex="${c.block_exercise_id}">Log</button>
         </div>
 
+        ${renderLiftSparklineHtml(exChart, time.today_date, c.slug || idx)}
+
         ${
           c.has_target
             ? `
@@ -103,8 +110,8 @@ export function renderTodayView(containerEl, actions) {
             : `<div class="small dim">Tap Log whenever you train ${escapeHtml(c.name)}</div>`
         }
       </div>
-    `
-    )
+    `;
+    })
     .join("");
 
   const bwHtml = bodyweight_card.enabled
@@ -194,12 +201,9 @@ export function renderTodayView(containerEl, actions) {
     ${setupPlanBanner}
 
     <section>
-      <div class="section-head" style="flex-wrap:wrap;gap:8px;">
-        <div>
-          <h3 class="section-title" style="margin:0;">Today's Targets</h3>
-          <span class="small muted">Sparse logging — train on your schedule</span>
-        </div>
-        ${renderCompanionPillGroupHtml(state.companion)}
+      <div class="section-head">
+        <h3 class="section-title">Today's Targets</h3>
+        <span class="small muted">Sparse logging — train on your schedule</span>
       </div>
       <div class="grid-2">${todayCardsHtml}</div>
     </section>
@@ -268,9 +272,11 @@ export function renderTodayView(containerEl, actions) {
     setupBtn.addEventListener("click", () => actions.switchTab("setup"));
   }
 
-  for (const btn of containerEl.querySelectorAll("[data-companion-pick]")) {
+  for (const btn of containerEl.querySelectorAll("[data-open-chart]")) {
     btn.addEventListener("click", () => {
-      actions.setCompanion(btn.getAttribute("data-companion-pick"));
+      const slug = btn.getAttribute("data-open-chart");
+      if (slug) state.selectedChartSlug = slug;
+      actions.switchTab("progress");
     });
   }
 }

@@ -9,9 +9,9 @@ export const THEMES = [
 ];
 
 export const COMPANIONS = [
-  { id: "cat", label: "Cat", preview: "./assets/companions/cat-squat.png" },
-  { id: "dog", label: "Dog", preview: "./assets/companions/dog-squat.png" },
-  { id: "gorilla", label: "Gorilla", preview: "./assets/companions/gorilla-squat.png" },
+  { id: "cat", label: "Cat", preview: "./assets/companions/cat-squat.gif" },
+  { id: "dog", label: "Dog", preview: "./assets/companions/dog-squat.gif" },
+  { id: "gorilla", label: "Gorilla", preview: "./assets/companions/gorilla-squat.gif" },
 ];
 
 const VALID_THEME_IDS = new Set(THEMES.map((t) => t.id));
@@ -53,36 +53,21 @@ export function canonicalLiftKey(slugOrName) {
   return null;
 }
 
-export function companionImageSrc(slugOrName, companionId = state.companion) {
+export function companionImageSrc(slugOrName, companionId = state.companion, animated = true) {
   const liftKey = canonicalLiftKey(slugOrName);
   if (!liftKey) return null;
   const safeId = VALID_COMPANION_IDS.has(companionId) ? companionId : "cat";
-  return `./assets/companions/${safeId}-${liftKey}.png`;
+  const ext = animated ? "gif" : "png";
+  return `./assets/companions/${safeId}-${liftKey}.${ext}`;
 }
 
 export function companionArtHtml(slugOrName, size = "lg", companionId = state.companion) {
-  const src = companionImageSrc(slugOrName, companionId);
+  const src = companionImageSrc(slugOrName, companionId, true);
   if (!src) return "";
   const compObj = COMPANIONS.find((c) => c.id === (VALID_COMPANION_IDS.has(companionId) ? companionId : "cat"));
   const liftKey = canonicalLiftKey(slugOrName);
   const alt = `${compObj ? compObj.label : "Cat"} ${liftKey || ""}`.trim();
   return `<img class="companion-art companion-art-${escapeHtml(size)}" src="${escapeHtml(src)}" alt="${escapeHtml(alt)}" loading="lazy" />`;
-}
-
-export function renderCompanionPillGroupHtml(activeCompanionId = state.companion) {
-  const active = VALID_COMPANION_IDS.has(activeCompanionId) ? activeCompanionId : "cat";
-  return `
-    <div class="companion-pill-group" role="group" aria-label="Lifting companion">
-      ${COMPANIONS.map(
-        (c) => `
-          <button type="button" class="companion-pill-btn ${c.id === active ? "active" : ""}" data-companion-pick="${escapeHtml(c.id)}" title="${escapeHtml(c.label)} companion">
-            <img src="${escapeHtml(c.preview)}" alt="" />
-            <span>${escapeHtml(c.label)}</span>
-          </button>
-        `
-      ).join("")}
-    </div>
-  `;
 }
 
 export function renderCompanionPickerCardsHtml(activeCompanionId = state.companion) {
