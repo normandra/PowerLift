@@ -16,12 +16,16 @@ const SUPABASE_KEY =
   "sb_publishable_ZYJfIi7mhCnZUcuggCY-Ig_RDMhltDK";
 
 const PENDING_DELETES_KEY = "pairlift_pending_deletes_v1";
+const CHEERS_SEEN_IDS_KEY = "pairlift_cheers_seen_ids_v1";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 let supabaseClientPromise = null;
 let syncInFlight = null;
 let debounceTimer = null;
 let authUnsub = null;
+let reactionsChannel = null;
+let reactionsChannelUid = null;
+let reactionsCallback = null;
 
 function isUuid(val) {
   return typeof val === "string" && UUID_RE.test(val);
@@ -67,6 +71,39 @@ function addPendingDelete(table, id) {
   }
 }
 
+function loadSeenCheerIds() {
+  try {
+    const raw = localStorage.getItem(CHEERS_SEEN_IDS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(parsed) ? parsed.map(String) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveSeenCheerIds(ids) {
+  try {
+    const arr = Array.from(ids).slice(-150);
+    localStorage.setItem(CHEERS_SEEN_IDS_KEY, JSON.stringify(arr));
+  } catch {
+    // ignore storage quota errors
+  }
+}
+
+async function stopReactionsChannel(client = null) {
+  const ch = reactionsChannel;
+  reactionsChannel = null;
+  reactionsChannelUid = null;
+  reactionsCallback = null;
+  if (!ch) return;
+  try {
+    const c = client || (await getSupabaseClient());
+    if (c) await c.removeChannel(ch);
+  } catch {
+    // ignore cleanup errors
+  }
+}
+
 function resetCloudState() {
   state.cloud.signedIn = false;
   state.cloud.email = null;
@@ -79,7 +116,14 @@ function resetCloudState() {
   state.partner.inviteExpiresAt = null;
   state.partner.overview = null;
   state.partner.selectedChartSlug = null;
+  state.partner.recentLimit = 3;
   state.partner.loading = false;
+  state.cheers = {
+    items: [],
+    unreadCount: 0,
+    loading: false,
+  };
+  stopReactionsChannel();
 }
 
 function applySessionMeta(session) {
@@ -416,6 +460,7 @@ export const cloud = {
 
   async signOut() {
     const client = await getSupabaseClient();
+    await stopReactionsChannel(client);
     if (client) {
       await client.auth.signOut().catch(() => {});
     }
@@ -639,6 +684,11 @@ export const cloud = {
         state.cloud.lastSyncedAt = new Date().toISOString();
 
         await this.fetchPartnerStatus();
+        if (state.partner.linked) {
+          await this.fetchIncomingReactions().catch(() => {});
+        } else {
+          state.cheers = { items: [], unreadCount: 0, loading: false };
+        }
         return nextSnapshot;
       } catch (err) {
         state.cloud.error = err?.message || "Sync failed";
@@ -772,6 +822,7 @@ export const cloud = {
 
     await this.fetchPartnerStatus();
     await this.fetchPartnerOverview().catch(() => {});
+    await this.fetchIncomingReactions().catch(() => {});
     return data;
   },
 
@@ -789,6 +840,9 @@ export const cloud = {
     state.partner.profile = null;
     state.partner.overview = null;
     state.partner.selectedChartSlug = null;
+    state.partner.recentLimit = 3;
+    state.cheers = { items: [], unreadCount: 0, loading: false };
+    await stopReactionsChannel(client);
   },
 
   async fetchPartnerOverview() {
@@ -908,7 +962,113 @@ export const cloud = {
         reactor_id: uid,
         emoji,
       });
-      if (error) throw new Error(error.message);
+      if (error && error.code !== "23505") throw new Error(error.message);
     }
+  },
+
+  async fetchIncomingReactions() {
+    const client = await getSupabaseClient();
+    if (!client || !state.cloud.signedIn || !state.cloud.authUserId) {
+      state.cheers = { items: [], unreadCount: 0, loading: false };
+      return [];
+    }
+
+    const uid = state.cloud.authUserId;
+    state.cheers.loading = true;
+    try {
+      const { data, error } = await client
+        .from("log_reactions")
+        .select("id, workout_log_id, log_owner_id, reactor_id, emoji, created_at")
+        .eq("log_owner_id", uid)
+        .neq("reactor_id", uid)
+        .order("created_at", { ascending: false })
+        .limit(40);
+
+      if (error) throw new Error(error.message);
+
+      const snap = localStore.getRawSnapshot();
+      const logById = new Map((snap.workout_logs || []).map((l) => [String(l.id), l]));
+      const exById = new Map((snap.block_exercises || []).map((e) => [String(e.id), e]));
+      const seenIds = loadSeenCheerIds();
+      const partnerProf = state.partner.profile;
+
+      const items = (data || []).map((r) => {
+        const log = logById.get(String(r.workout_log_id)) || null;
+        const ex = log ? exById.get(String(log.block_exercise_id)) || null : null;
+        const isPartner = partnerProf?.id && String(partnerProf.id) === String(r.reactor_id);
+        return {
+          id: String(r.id),
+          workout_log_id: String(r.workout_log_id),
+          reactor_id: String(r.reactor_id),
+          reactor_name: isPartner ? partnerProf.display_name || "Partner" : partnerProf?.display_name || "Partner",
+          reactor_color: partnerProf?.avatar_color || "#2DD4BF",
+          emoji: r.emoji,
+          created_at: r.created_at,
+          block_exercise_id: log?.block_exercise_id || null,
+          exercise_name: ex?.name || "Lift",
+          exercise_slug: ex?.slug || "lift",
+          log_date: log?.log_date || null,
+          primary_weight: log ? log.working_weight ?? log.one_rm ?? log.estimated_1rm ?? null : null,
+          isUnread: !seenIds.has(String(r.id)),
+        };
+      });
+
+      state.cheers.items = items;
+      state.cheers.unreadCount = items.filter((x) => x.isUnread).length;
+      return items;
+    } finally {
+      state.cheers.loading = false;
+    }
+  },
+
+  markAllCheersSeen() {
+    const seenIds = loadSeenCheerIds();
+    for (const item of state.cheers.items || []) {
+      seenIds.add(String(item.id));
+      item.isUnread = false;
+    }
+    saveSeenCheerIds(seenIds);
+    state.cheers.unreadCount = 0;
+  },
+
+  async subscribeIncomingReactions(onEvent) {
+    reactionsCallback = typeof onEvent === "function" ? onEvent : null;
+    const client = await getSupabaseClient();
+    if (!client || !state.cloud.signedIn || !state.cloud.authUserId) {
+      await stopReactionsChannel(client);
+      return null;
+    }
+
+    const uid = state.cloud.authUserId;
+    if (reactionsChannel && reactionsChannelUid === uid) {
+      return reactionsChannel;
+    }
+
+    await stopReactionsChannel(client);
+    reactionsCallback = typeof onEvent === "function" ? onEvent : null;
+    reactionsChannelUid = uid;
+    reactionsChannel = client
+      .channel(`pairlift-cheers-${uid}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "log_reactions",
+          filter: `log_owner_id=eq.${uid}`,
+        },
+        (payload) => {
+          if (typeof reactionsCallback === "function") {
+            reactionsCallback(payload);
+          }
+        }
+      )
+      .subscribe();
+
+    return reactionsChannel;
+  },
+
+  async unsubscribeIncomingReactions() {
+    await stopReactionsChannel();
   },
 };

@@ -3,7 +3,20 @@
  */
 
 import { api } from "./api.js";
-import { companionArtHtml, epleyClient, escapeHtml, fmtKg, mroundClient, showToast, state, todayIso } from "./state.js";
+import {
+  REACTION_EMOJIS,
+  avatarHtml,
+  companionArtHtml,
+  epleyClient,
+  escapeHtml,
+  fmtKg,
+  fmtRelativeTime,
+  fmtShortDate,
+  mroundClient,
+  showToast,
+  state,
+  todayIso,
+} from "./state.js";
 
 export function closeModal() {
   const root = document.getElementById("modal-root");
@@ -129,6 +142,11 @@ export function openLogWorkoutModal(preselectedExerciseId = null, onSaved = null
 
         <button type="submit" class="btn btn-primary btn-block" id="lw-submit">Save Workout</button>
       </form>
+      ${
+        (dash?.recent_logs?.length || 0) > 0
+          ? `<button type="button" class="btn btn-ghost btn-sm" id="lw-manage-logs" style="align-self:center;color:var(--text-muted);">Manage past logs…</button>`
+          : ""
+      }
     `,
     (root) => {
       const exSel = root.querySelector("#lw-ex");
@@ -301,6 +319,10 @@ export function openLogWorkoutModal(preselectedExerciseId = null, onSaved = null
         wwIn.value = String(initCard.today_target.target);
       }
       refreshPreview();
+
+      root.querySelector("#lw-manage-logs")?.addEventListener("click", () => {
+        openLogHistoryModal(exSel.value, onSaved);
+      });
 
       root.querySelector("#log-workout-form").addEventListener("submit", async (e) => {
         e.preventDefault();
@@ -522,4 +544,235 @@ export function openCreateBlockModal(onDone) {
       });
     }
   );
+}
+
+function buildGroupedCheers(unreadIdSnapshot) {
+  const groups = [];
+  const byLog = new Map();
+  for (const item of state.cheers?.items || []) {
+    const key = String(item.workout_log_id);
+    let grp = byLog.get(key);
+    if (!grp) {
+      grp = {
+        workout_log_id: key,
+        exercise_name: item.exercise_name || "Lift",
+        exercise_slug: item.exercise_slug || "lift",
+        primary_weight: item.primary_weight,
+        log_date: item.log_date,
+        reactor_name: item.reactor_name || "Partner",
+        reactor_color: item.reactor_color || "#2DD4BF",
+        latest_created_at: item.created_at,
+        emojiSet: new Set(),
+        hasNew: false,
+      };
+      byLog.set(key, grp);
+      groups.push(grp);
+    }
+    if (item.emoji) grp.emojiSet.add(item.emoji);
+    if (unreadIdSnapshot.has(String(item.id))) grp.hasNew = true;
+  }
+
+  return groups.map((g) => ({
+    ...g,
+    emojis: [...g.emojiSet].sort((a, b) => {
+      const ia = REACTION_EMOJIS.indexOf(a);
+      const ib = REACTION_EMOJIS.indexOf(b);
+      return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+    }),
+  }));
+}
+
+export function openCheersModal(actions) {
+  const unreadIdSnapshot = new Set(
+    (state.cheers?.items || []).filter((i) => i.isUnread).map((i) => String(i.id))
+  );
+
+  const renderCheers = () => {
+    const groups = buildGroupedCheers(unreadIdSnapshot);
+    const bodyHtml = groups.length
+      ? `
+        <div style="display:flex;flex-direction:column;gap:8px;max-height:60vh;overflow-y:auto;">
+          ${groups
+            .map((g) => {
+              const art = companionArtHtml(g.exercise_slug || g.exercise_name, "sm");
+              const weightPart = g.primary_weight != null ? ` · ${escapeHtml(fmtKg(g.primary_weight))}` : "";
+              const datePart = g.log_date ? ` · ${escapeHtml(fmtShortDate(g.log_date))}` : "";
+              return `
+                <div class="card-subtle cheer-item ${g.hasNew ? "is-new" : ""}">
+                  ${art || avatarHtml(g.reactor_name, g.reactor_color)}
+                  <div style="min-width:0;flex:1;">
+                    <div class="row-between" style="gap:6px;">
+                      <div style="font-size:13.5px;min-width:0;">
+                        <strong>${escapeHtml(g.reactor_name)}</strong>
+                        <span class="muted"> reacted </span>
+                        <span class="cheer-emoji-row">${g.emojis.map(escapeHtml).join(" ")}</span>
+                      </div>
+                      ${g.hasNew ? `<span class="cheer-new-pill">New</span>` : ""}
+                    </div>
+                    <div class="row-between small dim" style="margin-top:2px;gap:8px;">
+                      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                        your ${escapeHtml(g.exercise_name)}${weightPart}${datePart}
+                      </span>
+                      <span style="flex-shrink:0;">${escapeHtml(fmtRelativeTime(g.latest_created_at))}</span>
+                    </div>
+                  </div>
+                </div>
+              `;
+            })
+            .join("")}
+        </div>
+      `
+      : `
+        <div class="card-subtle small muted" style="line-height:1.5;">
+          No partner cheers yet. When your partner reacts with emojis in their <strong>Partner</strong> tab,
+          they appear right here and on your <strong>Today</strong> lift cards.
+        </div>
+      `;
+
+    mountModal(
+      `
+        <div class="row-between">
+          <div>
+            <h3 style="margin:0;font-size:18px;">Partner Cheers</h3>
+            <div class="small muted">Emoji reactions on your recent lifts</div>
+          </div>
+          <div class="row-inline" style="gap:6px;">
+            <button type="button" class="btn btn-secondary btn-sm" id="ch-refresh">Refresh</button>
+            <button type="button" class="btn-ghost btn-sm" data-close-modal aria-label="Close">✕</button>
+          </div>
+        </div>
+        ${bodyHtml}
+      `,
+      (root) => {
+        if (actions?.markCheersSeen) actions.markCheersSeen();
+        root.querySelector("#ch-refresh")?.addEventListener("click", async () => {
+          const btn = root.querySelector("#ch-refresh");
+          if (btn) {
+            btn.disabled = true;
+            btn.textContent = "Checking…";
+          }
+          try {
+            await actions?.refreshCheers?.();
+            for (const item of state.cheers?.items || []) {
+              if (item.isUnread) unreadIdSnapshot.add(String(item.id));
+            }
+            renderCheers();
+          } catch (err) {
+            showToast(err.message || "Could not refresh cheers", true);
+            if (btn) {
+              btn.disabled = false;
+              btn.textContent = "Refresh";
+            }
+          }
+        });
+      }
+    );
+  };
+
+  renderCheers();
+}
+
+export function openLogHistoryModal(initialExId = null, onChanged = null) {
+  let filterExId = initialExId ? String(initialExId) : "all";
+
+  const renderHistory = () => {
+    const dash = state.cache.dashboard;
+    const allLogs = dash?.recent_logs || [];
+    const exercises = state.activeBlockDetail?.exercises || [];
+    if (filterExId !== "all" && !exercises.some((e) => String(e.id) === filterExId)) {
+      filterExId = "all";
+    }
+
+    const filtered =
+      filterExId === "all"
+        ? allLogs
+        : allLogs.filter((l) => String(l.block_exercise_id) === filterExId);
+
+    const pillsHtml = [
+      `<button type="button" class="pill-btn ${filterExId === "all" ? "active" : ""}" data-lh-filter="all">All (${allLogs.length})</button>`,
+      ...exercises.map((e) => {
+        const cnt = allLogs.filter((l) => String(l.block_exercise_id) === String(e.id)).length;
+        return `<button type="button" class="pill-btn ${filterExId === String(e.id) ? "active" : ""}" data-lh-filter="${escapeHtml(e.id)}">${escapeHtml(e.name)} (${cnt})</button>`;
+      }),
+    ].join("");
+
+    const rowsHtml = filtered.length
+      ? filtered
+          .map((l) => {
+            const val = l.working_weight ?? l.one_rm ?? l.estimated_1rm;
+            return `
+              <div class="card-subtle row-between" style="gap:10px;padding:10px 12px;">
+                <div style="min-width:0;">
+                  <div style="font-size:13.5px;">
+                    <strong>${escapeHtml(l.exercise_name)}</strong>
+                    <span class="num"> ${escapeHtml(fmtKg(val))}</span>
+                    ${l.is_pr ? ` <span class="badge badge-pr">🏆 PR</span>` : ""}
+                  </div>
+                  <div class="dim small num">
+                    Day ${l.day_number} · ${escapeHtml(l.log_date)}
+                    ${l.one_rm || l.estimated_1rm ? ` · 1RM ${escapeHtml(fmtKg(l.one_rm || l.estimated_1rm))}` : ""}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  class="btn btn-ghost btn-sm"
+                  data-lh-del="${escapeHtml(l.id)}"
+                  style="color:var(--crimson);flex-shrink:0;"
+                >
+                  Delete
+                </button>
+              </div>
+            `;
+          })
+          .join("")
+      : `<div class="muted small">No recent entries match this filter.</div>`;
+
+    mountModal(
+      `
+        <div class="row-between">
+          <div>
+            <h3 style="margin:0;font-size:18px;">Log History</h3>
+            <div class="small muted">Review or permanently remove recent entries</div>
+          </div>
+          <button type="button" class="btn-ghost btn-sm" data-close-modal aria-label="Close">✕</button>
+        </div>
+        <div class="pill-scroll">${pillsHtml}</div>
+        <div style="display:flex;flex-direction:column;gap:8px;max-height:55vh;overflow-y:auto;">
+          ${rowsHtml}
+        </div>
+      `,
+      (root) => {
+        for (const btn of root.querySelectorAll("[data-lh-filter]")) {
+          btn.addEventListener("click", () => {
+            filterExId = btn.getAttribute("data-lh-filter") || "all";
+            renderHistory();
+          });
+        }
+
+        for (const btn of root.querySelectorAll("[data-lh-del]")) {
+          btn.addEventListener("click", async () => {
+            const logId = btn.getAttribute("data-lh-del");
+            const log = allLogs.find((x) => String(x.id) === String(logId));
+            const val = log ? log.working_weight ?? log.one_rm ?? log.estimated_1rm : null;
+            const label = log ? `${log.exercise_name} (${fmtKg(val)}) on ${log.log_date}` : "this entry";
+            if (!window.confirm(`Permanently delete ${label}? This removes the workout entry from your history.`)) {
+              return;
+            }
+            btn.disabled = true;
+            try {
+              await api.deleteWorkout(logId);
+              showToast("Workout entry deleted");
+              if (onChanged) await onChanged();
+              renderHistory();
+            } catch (err) {
+              btn.disabled = false;
+              showToast(err.message || "Could not delete entry", true);
+            }
+          });
+        }
+      }
+    );
+  };
+
+  renderHistory();
 }

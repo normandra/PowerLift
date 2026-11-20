@@ -5,9 +5,12 @@
 import { IS_LOCAL_MODE, api } from "./api.js";
 import { cloud } from "./cloud.js";
 import { localStore } from "./localStore.js";
-import { openLogWorkoutModal } from "./modals.js";
+import { openCheersModal, openLogWorkoutModal } from "./modals.js";
 import { openShareModal } from "./share.js";
-import { applyCompanion, applyTheme, avatarHtml, escapeHtml, renderThemePillGroupHtml, showToast, state } from "./state.js";
+import { applyCompanion, applyTheme, avatarHtml, escapeHtml, fmtKg, renderThemePillGroupHtml, showToast, state } from "./state.js";
+
+const toastedCheerIds = new Set();
+let lastResumeCheckAt = 0;
 import { renderAuthView } from "./views/auth.js";
 import { renderPartnerView } from "./views/partner.js";
 import { renderProgressView } from "./views/progress.js";
@@ -49,6 +52,60 @@ function getVisibleTabs() {
     return [BASE_TABS[0], BASE_TABS[1], BASE_TABS[2], PARTNER_TAB, BASE_TABS[3]];
   }
   return BASE_TABS;
+}
+
+function updateTopbarCheersBadge() {
+  const btn = document.getElementById("btn-topbar-cheers");
+  const badge = document.getElementById("topbar-cheers-badge");
+  const count = state.cheers?.unreadCount || 0;
+  if (btn) btn.classList.toggle("has-unread", count > 0);
+  if (badge) {
+    badge.textContent = count > 9 ? "9+" : String(count);
+    badge.hidden = count <= 0;
+  }
+}
+
+function announceNewCheers(items, { fromRealtime = false } = {}) {
+  const fresh = (items || []).filter(
+    (x) => x.isUnread && !toastedCheerIds.has(String(x.id))
+  );
+  if (!fresh.length) return;
+  for (const x of fresh) toastedCheerIds.add(String(x.id));
+
+  if (fresh.length === 1 || fromRealtime) {
+    const c = fresh[0];
+    const wt = c.primary_weight != null ? ` (${fmtKg(c.primary_weight)})` : "";
+    showToast(`${c.emoji} ${c.reactor_name} cheered your ${c.exercise_name}${wt}`, {
+      type: "cheer",
+      onClick: () => actions.openCheers(),
+    });
+  } else {
+    showToast(`🎉 ${fresh.length} new cheers from ${fresh[0].reactor_name}!`, {
+      type: "cheer",
+      onClick: () => actions.openCheers(),
+    });
+  }
+}
+
+function ensureCheersRealtime() {
+  if (IS_LOCAL_MODE && state.cloud.signedIn && state.partner.linked) {
+    cloud
+      .subscribeIncomingReactions(async (payload) => {
+        try {
+          await cloud.fetchIncomingReactions();
+          updateTopbarCheersBadge();
+          if (state.activeTab === "today") renderCurrentTab();
+          if (payload?.eventType === "INSERT") {
+            announceNewCheers(state.cheers.items, { fromRealtime: true });
+          }
+        } catch {
+          // ignore transient realtime refresh errors
+        }
+      })
+      .catch(() => {});
+  } else {
+    cloud.unsubscribeIncomingReactions().catch(() => {});
+  }
 }
 
 async function loadBlockData(blockId) {
@@ -142,6 +199,14 @@ function renderShell() {
                   : ""
               }
               ${
+                IS_LOCAL_MODE && state.cloud.signedIn && state.partner.linked
+                  ? `<button type="button" class="btn-icon-pill ${state.cheers.unreadCount > 0 ? "has-unread" : ""}" id="btn-topbar-cheers" aria-label="Partner cheers" title="Partner cheers">
+                      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                      <span class="cheers-badge num" id="topbar-cheers-badge" ${state.cheers.unreadCount > 0 ? "" : "hidden"}>${state.cheers.unreadCount > 9 ? "9+" : state.cheers.unreadCount}</span>
+                    </button>`
+                  : ""
+              }
+              ${
                 state.activeBlockId
                   ? `<button type="button" class="btn btn-mint btn-sm" id="btn-topbar-share">Share</button>`
                   : ""
@@ -177,6 +242,11 @@ function renderShell() {
   const selBlk = root.querySelector("#sel-block");
   if (selBlk) {
     selBlk.addEventListener("change", () => actions.selectBlock(selBlk.value));
+  }
+
+  const topCheers = root.querySelector("#btn-topbar-cheers");
+  if (topCheers) {
+    topCheers.addEventListener("click", () => actions.openCheers());
   }
 
   const topShare = root.querySelector("#btn-topbar-share");
@@ -265,8 +335,11 @@ const actions = {
       await actions.refreshAllBlocks();
       if (state.partner.linked) {
         await cloud.fetchPartnerOverview().catch(() => {});
+        await cloud.fetchIncomingReactions().catch(() => {});
       }
+      ensureCheersRealtime();
       renderShell();
+      announceNewCheers(state.cheers.items);
       showToast("Synced with Google Cloud backup!");
     } catch (err) {
       showToast(err.message || "Sync failed", true);
@@ -277,6 +350,19 @@ const actions = {
     if (state.activeTab === "partner") state.activeTab = "today";
     showToast("Signed out (local data kept on this device)");
     renderShell();
+  },
+  openCheers() {
+    openCheersModal(actions);
+  },
+  markCheersSeen() {
+    cloud.markAllCheersSeen();
+    updateTopbarCheersBadge();
+    if (state.activeTab === "today") renderCurrentTab();
+  },
+  async refreshCheers() {
+    await cloud.fetchIncomingReactions();
+    updateTopbarCheersBadge();
+    if (state.activeTab === "today") renderCurrentTab();
   },
   async refreshPartner() {
     if (!state.cloud.signedIn || !state.partner.linked) return;
@@ -303,6 +389,7 @@ const actions = {
   async claimPartnerInvite(code) {
     try {
       const p = await cloud.claimInviteCode(code);
+      ensureCheersRealtime();
       showToast(`Linked with ${p?.display_name || "Partner"}!`);
       renderShell();
     } catch (err) {
@@ -411,12 +498,15 @@ async function init() {
           state.blocks = meRes.blocks || [];
           await actions.bootstrapAfterLogin();
           if (state.partner.linked) {
+            ensureCheersRealtime();
+            announceNewCheers(state.cheers.items);
             cloud.fetchPartnerOverview().then(() => renderShell()).catch(() => {});
           }
         } catch {
           renderShell();
         }
       } else if (event === "SIGNED_OUT") {
+        cloud.unsubscribeIncomingReactions().catch(() => {});
         renderShell();
       }
     });
@@ -441,12 +531,32 @@ async function init() {
     state.blocks = meRes.blocks || [];
     await actions.bootstrapAfterLogin();
     if (IS_LOCAL_MODE && state.cloud.signedIn && state.partner.linked) {
+      ensureCheersRealtime();
+      announceNewCheers(state.cheers.items);
       cloud.fetchPartnerOverview().then(() => {
         if (state.activeTab === "partner") renderCurrentTab();
       }).catch(() => {});
     }
   } catch {
     renderShell();
+  }
+
+  if (IS_LOCAL_MODE && typeof document !== "undefined") {
+    document.addEventListener("visibilitychange", async () => {
+      if (document.visibilityState !== "visible") return;
+      if (!state.cloud.signedIn || !state.partner.linked) return;
+      const now = Date.now();
+      if (now - lastResumeCheckAt < 10000) return;
+      lastResumeCheckAt = now;
+      try {
+        await cloud.fetchIncomingReactions();
+        updateTopbarCheersBadge();
+        if (state.activeTab === "today") renderCurrentTab();
+        announceNewCheers(state.cheers.items);
+      } catch {
+        // ignore resume refresh failure
+      }
+    });
   }
 }
 

@@ -10,10 +10,29 @@ import {
   companionArtHtml,
   escapeHtml,
   fmtKg,
+  fmtShortDate,
   showToast,
   state,
   statusBadge,
 } from "../state.js";
+
+const pendingReactionKeys = new Set();
+
+function syncReactionButtonDom(btn, info) {
+  btn.classList.toggle("active", Boolean(info.reactedByMe));
+  btn.setAttribute("aria-pressed", info.reactedByMe ? "true" : "false");
+  let countEl = btn.querySelector(".rx-count");
+  if (info.count > 0) {
+    if (!countEl) {
+      countEl = document.createElement("span");
+      countEl.className = "num rx-count";
+      btn.appendChild(countEl);
+    }
+    countEl.textContent = String(info.count);
+  } else if (countEl) {
+    countEl.remove();
+  }
+}
 
 export function renderPartnerView(containerEl, actions) {
   if (!state.cloud.signedIn || !state.partner.linked) {
@@ -57,8 +76,12 @@ export function renderPartnerView(containerEl, actions) {
   }
 
   const { profile, block, dashboard, charts, reactionsByLogId } = overview;
+  const partnerName = profile.display_name || "Partner";
   const pComp = profile.companion || "cat";
   const { time, today_cards, stats, recent_logs } = dashboard;
+  const allRecent = recent_logs || [];
+  const limit = Math.max(3, state.partner.recentLimit || 3);
+  const visibleRecent = allRecent.slice(0, limit);
   const myDash = state.cache.dashboard;
   const myCardsBySlug = new Map((myDash?.today_cards || []).map((c) => [String(c.slug), c]));
 
@@ -128,44 +151,39 @@ export function renderPartnerView(containerEl, actions) {
     })
     .join("");
 
-  const recentHtml = recent_logs?.length
-    ? recent_logs
+  const recentHtml = visibleRecent.length
+    ? visibleRecent
         .map((l) => {
           const rxMap = reactionsByLogId?.[String(l.id)] || {};
+          const primaryVal = l.working_weight ?? l.one_rm ?? l.estimated_1rm;
           return `
-            <div class="card-subtle" style="display:flex;flex-direction:column;gap:8px;">
-              <div class="row-between" style="flex-wrap:wrap;gap:8px;">
-                <div class="row-inline" style="gap:10px;min-width:0;">
-                  ${companionArtHtml(l.exercise_slug || l.exercise_name, "sm", pComp)}
-                  <div style="min-width:0;">
-                    <div>
-                      <strong>${escapeHtml(l.exercise_name)}</strong>
-                      <span class="num"> ${escapeHtml(fmtKg(l.working_weight ?? l.one_rm ?? l.estimated_1rm))}</span>
-                      ${l.is_pr ? ` <span class="badge badge-pr">🏆 PR</span>` : ""}
-                    </div>
-                    <div class="dim small num">
-                      Day ${l.day_number} · ${escapeHtml(l.log_date)}
-                      ${l.one_rm || l.estimated_1rm ? ` · 1RM ${escapeHtml(fmtKg(l.one_rm || l.estimated_1rm))}` : ""}
-                      ${l.notes ? ` · ${escapeHtml(l.notes)}` : ""}
-                    </div>
-                  </div>
+            <div class="partner-lift-row">
+              <div class="partner-lift-top">
+                <div class="row-inline" style="gap:7px;min-width:0;flex:1;flex-wrap:wrap;">
+                  ${companionArtHtml(l.exercise_slug || l.exercise_name, "xs", pComp)}
+                  <strong>${escapeHtml(l.exercise_name)}</strong>
+                  <span class="num">${escapeHtml(fmtKg(primaryVal))}</span>
+                  ${l.is_pr ? `<span class="badge badge-pr">🏆 PR</span>` : ""}
+                  <span class="dim small num">· ${escapeHtml(fmtShortDate(l.log_date))}</span>
                 </div>
                 ${l.evaluation ? statusBadge(l.evaluation.status, l.evaluation.delta) : ""}
               </div>
-
-              <div class="reaction-row">
+              ${l.notes ? `<div class="dim small partner-lift-note">${escapeHtml(l.notes)}</div>` : ""}
+              <div class="reaction-row reaction-row-compact">
                 ${REACTION_EMOJIS.map((em) => {
                   const info = rxMap[em] || { count: 0, reactedByMe: false };
                   return `
                     <button
                       type="button"
                       class="reaction-chip ${info.reactedByMe ? "active" : ""}"
+                      aria-pressed="${info.reactedByMe ? "true" : "false"}"
+                      title="Send ${escapeHtml(em)} to ${escapeHtml(partnerName)}"
                       data-react-log="${escapeHtml(l.id)}"
                       data-react-owner="${escapeHtml(profile.id)}"
                       data-react-emoji="${escapeHtml(em)}"
                     >
                       <span>${em}</span>
-                      ${info.count > 0 ? `<span class="num">${info.count}</span>` : ""}
+                      ${info.count > 0 ? `<span class="num rx-count">${info.count}</span>` : ""}
                     </button>
                   `;
                 }).join("")}
@@ -175,6 +193,24 @@ export function renderPartnerView(containerEl, actions) {
         })
         .join("")
     : `<div class="muted small">No recent lifts logged in this block yet.</div>`;
+
+  const recentFooterHtml =
+    allRecent.length > 3
+      ? `
+        <div class="row-inline" style="justify-content:center;gap:8px;margin-top:2px;">
+          ${
+            limit < allRecent.length
+              ? `<button type="button" class="btn btn-secondary btn-sm" id="p-show-more">Show older lifts (${allRecent.length - limit} more)</button>`
+              : ""
+          }
+          ${
+            limit > 3
+              ? `<button type="button" class="btn btn-ghost btn-sm" id="p-show-less">Show fewer</button>`
+              : ""
+          }
+        </div>
+      `
+      : "";
 
   containerEl.innerHTML = `
     <div class="card hero-card" style="display:flex;flex-direction:column;gap:12px;">
@@ -292,11 +328,12 @@ export function renderPartnerView(containerEl, actions) {
     </section>
 
     <section class="card" style="display:flex;flex-direction:column;gap:10px;">
-      <div class="section-head" style="margin-bottom:0;">
-        <h3 class="section-title">Recent Lifts &amp; Reactions</h3>
-        <span class="small muted">Tap an emoji to cheer them on</span>
+      <div class="section-head" style="margin-bottom:0;flex-wrap:wrap;gap:4px;">
+        <h3 class="section-title">Recent Lifts</h3>
+        <span class="small muted">Cheers show on ${escapeHtml(partnerName)}'s Today &amp; Cheers</span>
       </div>
       <div style="display:flex;flex-direction:column;gap:8px;">${recentHtml}</div>
+      ${recentFooterHtml}
     </section>
   `;
 
@@ -324,28 +361,49 @@ export function renderPartnerView(containerEl, actions) {
     });
   }
 
+  containerEl.querySelector("#p-show-more")?.addEventListener("click", () => {
+    state.partner.recentLimit = Math.min(allRecent.length, limit + 5);
+    actions.renderCurrentTab();
+  });
+
+  containerEl.querySelector("#p-show-less")?.addEventListener("click", () => {
+    state.partner.recentLimit = 3;
+    actions.renderCurrentTab();
+  });
+
   for (const btn of containerEl.querySelectorAll("[data-react-log]")) {
     btn.addEventListener("click", async () => {
       const logId = btn.getAttribute("data-react-log");
       const ownerId = btn.getAttribute("data-react-owner");
       const emoji = btn.getAttribute("data-react-emoji");
+      const key = `${logId}:${emoji}`;
+      if (pendingReactionKeys.has(key)) return;
 
       const rxMap = overview.reactionsByLogId[logId] || (overview.reactionsByLogId[logId] = {});
       const prev = rxMap[emoji] ? { ...rxMap[emoji] } : { count: 0, reactedByMe: false };
       const nextReacted = !prev.reactedByMe;
-
-      rxMap[emoji] = {
+      const optimistic = {
         count: Math.max(0, prev.count + (nextReacted ? 1 : -1)),
         reactedByMe: nextReacted,
       };
-      actions.renderCurrentTab();
+
+      rxMap[emoji] = optimistic;
+      syncReactionButtonDom(btn, optimistic);
+      pendingReactionKeys.add(key);
 
       try {
         await actions.togglePartnerReaction(logId, ownerId, emoji, prev.reactedByMe);
+        showToast(
+          nextReacted
+            ? `Sent ${emoji} to ${partnerName} (shows in their Cheers)`
+            : `Removed ${emoji}`
+        );
       } catch (err) {
         rxMap[emoji] = prev;
-        actions.renderCurrentTab();
+        syncReactionButtonDom(btn, prev);
         showToast(err.message || "Could not update reaction", true);
+      } finally {
+        pendingReactionKeys.delete(key);
       }
     });
   }

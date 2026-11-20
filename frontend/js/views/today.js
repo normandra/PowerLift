@@ -2,11 +2,52 @@
  * Today view: Active block hero + Share Card button, Today's Targets, Bodyweight, Block Stats, Recent Logs.
  */
 
-import { api } from "../api.js";
 import { renderLiftSparklineHtml } from "../charts.js";
 import { openBodyweightModal, openCreateBlockModal, openLogWorkoutModal } from "../modals.js";
 import { openShareModal } from "../share.js";
-import { companionArtHtml, escapeHtml, fmtKg, showToast, state, statusBadge } from "../state.js";
+import {
+  REACTION_EMOJIS,
+  companionArtHtml,
+  escapeHtml,
+  fmtKg,
+  fmtShortDate,
+  state,
+  statusBadge,
+} from "../state.js";
+
+function liftCheerSummary(card, incomingCheers) {
+  if (!incomingCheers?.length) return null;
+  const latestIds = new Set(
+    [card.latest_log?.id, card.latest_metric_log?.id].filter(Boolean).map(String)
+  );
+
+  let matched = incomingCheers.filter((ch) => latestIds.has(String(ch.workout_log_id)));
+  let isOnLatest = matched.length > 0;
+
+  if (!matched.length) {
+    const firstByEx = incomingCheers.find(
+      (ch) => ch.block_exercise_id && String(ch.block_exercise_id) === String(card.block_exercise_id)
+    );
+    if (!firstByEx) return null;
+    matched = incomingCheers.filter((ch) => String(ch.workout_log_id) === String(firstByEx.workout_log_id));
+  }
+
+  const emojiSet = new Set(matched.map((m) => m.emoji).filter(Boolean));
+  const emojis = [...emojiSet].sort((a, b) => {
+    const ia = REACTION_EMOJIS.indexOf(a);
+    const ib = REACTION_EMOJIS.indexOf(b);
+    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+  });
+
+  if (!emojis.length) return null;
+  return {
+    emojis,
+    reactorName: matched[0].reactor_name || "Partner",
+    hasUnread: matched.some((m) => m.isUnread),
+    isOnLatest,
+    cheerLogDate: matched[0].log_date || null,
+  };
+}
 
 export function renderTodayView(containerEl, actions) {
   const dash = state.cache.dashboard;
@@ -24,7 +65,8 @@ export function renderTodayView(containerEl, actions) {
     return;
   }
 
-  const { block, time, has_plan, today_cards, bodyweight_card, stats, recent_logs } = dash;
+  const { block, time, has_plan, today_cards, bodyweight_card, stats } = dash;
+  const incomingCheers = state.cheers?.items || [];
   const chartList = state.cache.charts?.exercises || [];
   const chartsByExId = new Map(chartList.map((e) => [String(e.block_exercise_id), e]));
   const chartsBySlug = new Map(chartList.map((e) => [String(e.slug), e]));
@@ -109,6 +151,19 @@ export function renderTodayView(containerEl, actions) {
             ? `<div class="small muted">Latest: <strong style="color:var(--text)">Logged</strong> on ${escapeHtml(c.latest_log.log_date)}</div>`
             : `<div class="small dim">Tap Log whenever you train ${escapeHtml(c.name)}</div>`
         }
+        ${(() => {
+          const cheer = liftCheerSummary(c, incomingCheers);
+          if (!cheer) return "";
+          const when = !cheer.isOnLatest && cheer.cheerLogDate ? ` · ${fmtShortDate(cheer.cheerLogDate)}` : "";
+          return `
+            <div>
+              <button type="button" class="lift-cheer-pill ${cheer.hasUnread ? "has-unread" : ""}" data-open-cheers>
+                <span class="lift-cheer-emojis">${cheer.emojis.map(escapeHtml).join(" ")}</span>
+                <span>from ${escapeHtml(cheer.reactorName)}${escapeHtml(when)}</span>
+              </button>
+            </div>
+          `;
+        })()}
       </div>
     `;
     })
@@ -134,44 +189,6 @@ export function renderTodayView(containerEl, actions) {
         </div>
         <button class="btn btn-secondary btn-sm" id="t-log-bw">Log BW</button>
       </div>
-    `
-    : "";
-
-  const recentLogsHtml = recent_logs?.length
-    ? `
-      <section class="card" style="display:flex;flex-direction:column;gap:10px;">
-        <div class="section-head" style="margin-bottom:0;">
-          <h3 class="section-title">Recent Sessions</h3>
-          <span class="small muted">Latest logged lifts</span>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:8px;">
-          ${recent_logs
-            .slice(0, 6)
-            .map(
-              (l) => `
-              <div class="card-subtle row-between" style="flex-wrap:wrap;gap:8px;">
-                <div>
-                  <div>
-                    <strong>${escapeHtml(l.exercise_name)}</strong>
-                    <span class="num"> ${escapeHtml(fmtKg(l.working_weight ?? l.one_rm ?? l.estimated_1rm))}</span>
-                    ${l.is_pr ? ` <span class="badge badge-pr">🏆 PR</span>` : ""}
-                  </div>
-                  <div class="dim small num">
-                    Day ${l.day_number} · ${escapeHtml(l.log_date)}
-                    ${l.one_rm || l.estimated_1rm ? ` · 1RM ${escapeHtml(fmtKg(l.one_rm || l.estimated_1rm))}` : ""}
-                    ${l.notes ? ` · ${escapeHtml(l.notes)}` : ""}
-                  </div>
-                </div>
-                <div class="row-inline">
-                  ${l.evaluation ? statusBadge(l.evaluation.status, l.evaluation.delta) : ""}
-                  <button type="button" class="btn-ghost btn-sm" data-del-log="${l.id}" aria-label="Delete log" title="Delete log">✕</button>
-                </div>
-              </div>
-            `
-            )
-            .join("")}
-        </div>
-      </section>
     `
     : "";
 
@@ -234,8 +251,6 @@ export function renderTodayView(containerEl, actions) {
         </div>
       </div>
     </section>
-
-    ${recentLogsHtml}
   `;
 
   containerEl.querySelector("#t-share-card").addEventListener("click", () => {
@@ -249,16 +264,9 @@ export function renderTodayView(containerEl, actions) {
     });
   }
 
-  for (const btn of containerEl.querySelectorAll("[data-del-log]")) {
-    btn.addEventListener("click", async () => {
-      const logId = btn.getAttribute("data-del-log");
-      try {
-        await api.deleteWorkout(logId);
-        showToast("Log deleted");
-        await actions.refreshActiveBlock();
-      } catch (err) {
-        showToast(err.message, true);
-      }
+  for (const btn of containerEl.querySelectorAll("[data-open-cheers]")) {
+    btn.addEventListener("click", () => {
+      actions.openCheers?.();
     });
   }
 

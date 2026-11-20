@@ -50,6 +50,12 @@ export const state = {
     overview: null,
     selectedChartSlug: null,
     showOneRmOverlay: true,
+    recentLimit: 3,
+    loading: false,
+  },
+  cheers: {
+    items: [],
+    unreadCount: 0,
     loading: false,
   },
   cache: {
@@ -203,6 +209,36 @@ export function todayIso() {
   return `${y}-${m}-${day}`;
 }
 
+export function fmtShortDate(isoDate) {
+  if (!isoDate) return "";
+  const parts = String(isoDate).slice(0, 10).split("-").map(Number);
+  if (parts.length !== 3 || parts.some(Number.isNaN)) return String(isoDate);
+  const [y, m, day] = parts;
+  const target = new Date(y, m - 1, day);
+  const now = new Date();
+  const todayMid = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const diffDays = Math.round((todayMid - target) / 86400000);
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+  return target.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+export function fmtRelativeTime(isoTimestamp) {
+  if (!isoTimestamp) return "";
+  const ms = new Date(isoTimestamp).getTime();
+  if (!Number.isFinite(ms)) return "";
+  const diffSec = Math.max(0, Math.floor((Date.now() - ms) / 1000));
+  if (diffSec < 60) return "Just now";
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDay = Math.floor(diffHr / 24);
+  if (diffDay === 1) return "Yesterday";
+  if (diffDay < 7) return `${diffDay}d ago`;
+  return new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
 export function mroundClient(value, inc) {
   const step = Number(inc);
   if (!step || step <= 0) return Math.round(value * 100) / 100;
@@ -215,14 +251,53 @@ export function epleyClient(weight, reps) {
   return mroundClient(weight * (1 + reps / 30), 0.5);
 }
 
-export function showToast(message, isError = false) {
+export function showToast(message, optsOrIsError = false) {
   const root = document.getElementById("toast-root");
   if (!root) return;
+
+  const opts =
+    typeof optsOrIsError === "boolean"
+      ? { type: optsOrIsError ? "error" : "info" }
+      : optsOrIsError || {};
+  const type = opts.type || "info";
+  const duration =
+    typeof opts.duration === "number" ? opts.duration : type === "cheer" || type === "error" ? 4200 : 2600;
+
+  while (root.children.length >= 2) {
+    root.firstElementChild.remove();
+  }
+
   const el = document.createElement("div");
-  el.className = `toast ${isError ? "error" : ""}`;
-  el.textContent = message;
+  el.className = `toast${type === "error" ? " error" : type === "cheer" ? " cheer" : ""}`;
+  el.setAttribute("role", "status");
+
+  const textSpan = document.createElement("span");
+  textSpan.textContent = String(message || "");
+  el.appendChild(textSpan);
+
+  if (type === "cheer" && typeof opts.onClick === "function") {
+    const actionSpan = document.createElement("span");
+    actionSpan.className = "toast-action";
+    actionSpan.textContent = "View";
+    el.appendChild(actionSpan);
+  }
+
+  let removed = false;
+  const dismiss = () => {
+    if (removed) return;
+    removed = true;
+    el.classList.add("toast-leaving");
+    setTimeout(() => {
+      el.remove();
+    }, 220);
+  };
+
+  el.addEventListener("click", () => {
+    const cb = opts.onClick;
+    dismiss();
+    if (typeof cb === "function") cb();
+  });
+
   root.appendChild(el);
-  setTimeout(() => {
-    el.remove();
-  }, 3800);
+  setTimeout(dismiss, Math.max(220, duration - 220));
 }
