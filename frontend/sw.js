@@ -1,0 +1,73 @@
+const CACHE_NAME = "pairlift-shell-v5";
+const SHELL_ASSETS = [
+  "./",
+  "./index.html",
+  "./manifest.webmanifest",
+  "./css/styles.css?v=5",
+  "./icons/icon-192.png",
+  "./icons/icon-512.png",
+  "./icons/icon.svg",
+  "./js/app.js?v=5",
+  "./js/api.js",
+  "./js/localStore.js",
+  "./js/plansEngine.js",
+  "./js/state.js",
+  "./js/charts.js",
+  "./js/modals.js",
+  "./js/share.js",
+  "./js/views/auth.js",
+  "./js/views/today.js",
+  "./js/views/weekly.js",
+  "./js/views/progress.js",
+  "./js/views/setup.js"
+];
+
+self.addEventListener("install", (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL_ASSETS)).catch(() => {})
+  );
+  self.skipWaiting();
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    caches.keys().then((keys) =>
+      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
+    )
+  );
+  self.clients.claim();
+});
+
+self.addEventListener("fetch", (event) => {
+  const url = new URL(event.request.url);
+  if (event.request.method !== "GET" || url.pathname.includes("/api/")) {
+    return;
+  }
+
+  if (event.request.mode === "navigate") {
+    event.respondWith(
+      fetch(event.request)
+        .then((res) => {
+          const copy = res.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put("./index.html", copy));
+          return res;
+        })
+        .catch(() => caches.match("./index.html").then((r) => r || caches.match("./")))
+    );
+    return;
+  }
+
+  if (url.origin === self.location.origin) {
+    event.respondWith(
+      fetch(event.request)
+        .then((res) => {
+          if (res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          }
+          return res;
+        })
+        .catch(() => caches.match(event.request))
+    );
+  }
+});

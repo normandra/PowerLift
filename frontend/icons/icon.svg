@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#141821"/>
+      <stop offset="100%" stop-color="#0B0D11"/>
+    </linearGradient>
+    <linearGradient id="coral" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FF7F6E"/>
+      <stop offset="100%" stop-color="#FF5540"/>
+    </linearGradient>
+    <linearGradient id="mint" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#5EEAD4"/>
+      <stop offset="100%" stop-color="#14B8A6"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <rect x="20" y="20" width="472" height="472" rx="96" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="4"/>
+  <!-- Barbell shaft -->
+  <rect x="76" y="244" width="360" height="24" rx="12" fill="#E2E8F0"/>
+  <!-- Coral left plates -->
+  <rect x="96" y="168" width="34" height="176" rx="14" fill="url(#coral)"/>
+  <rect x="140" y="138" width="44" height="236" rx="16" fill="url(#coral)"/>
+  <!-- Mint right plates -->
+  <rect x="382" y="168" width="34" height="176" rx="14" fill="url(#mint)"/>
+  <rect x="328" y="138" width="44" height="236" rx="16" fill="url(#mint)"/>
+  <!-- Center interlocking heart-pulse mark -->
+  <circle cx="232" cy="256" r="34" fill="#0B0D11" stroke="#FF6B57" stroke-width="10"/>
+  <circle cx="280" cy="256" r="34" fill="#0B0D11" stroke="#2DD4BF" stroke-width="10"/>
+</svg>
