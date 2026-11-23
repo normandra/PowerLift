@@ -3,9 +3,9 @@
  */
 
 export const THEMES = [
-  { id: "default", label: "Coral Dark", primary: "#FF6B57", secondary: "#2DD4BF", metaColor: "#111318" },
-  { id: "blue", label: "Blue", primary: "#3B82F6", secondary: "#38BDF8", metaColor: "#070D19" },
-  { id: "pink", label: "Pink", primary: "#F472B6", secondary: "#F9A8D4", metaColor: "#140912" },
+  { id: "default", label: "Coral Dark", primary: "#FF644E", secondary: "#4FD1B5", metaColor: "#0D0C0E" },
+  { id: "blue", label: "Blue", primary: "#5294FF", secondary: "#56D2FF", metaColor: "#080D1A" },
+  { id: "pink", label: "Pink", primary: "#F56EB3", secondary: "#FFB4D9", metaColor: "#150A14" },
 ];
 
 export const COMPANIONS = [

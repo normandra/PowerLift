@@ -219,7 +219,7 @@ export function renderPartnerView(containerEl, actions) {
           ${avatarHtml(profile.display_name, profile.avatar_color, true)}
           <div>
             <div class="small muted">Linked Partner · ${escapeHtml(dashboard.plan?.plan_name || "Training Block")}</div>
-            <h2 style="margin:2px 0 0;font-size:20px;letter-spacing:-0.02em;">
+            <h2 class="hero-title">
               ${escapeHtml(profile.display_name || "Partner")} — ${escapeHtml(block.name)}
             </h2>
           </div>

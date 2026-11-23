@@ -24,7 +24,7 @@ export function renderAuthView(containerEl, onAuthenticated) {
           <div class="row-inline">
             <img src="./icons/icon.svg" alt="PairLift" style="width:44px;height:44px;border-radius:11px;" />
             <div>
-              <h1 style="margin:0;font-size:22px;letter-spacing:-0.02em;">PairLift</h1>
+              <h1 class="auth-title">PairLift</h1>
               <div class="muted small">Powerlifting blocks, daily targets &amp; share cards</div>
             </div>
           </div>
@@ -161,7 +161,7 @@ export function renderAuthView(containerEl, onAuthenticated) {
           <div class="row-inline">
             <img src="./icons/icon.svg" alt="PairLift" style="width:42px;height:42px;border-radius:11px;" />
             <div>
-              <h1 style="margin:0;font-size:22px;letter-spacing:-0.02em;">PairLift</h1>
+              <h1 class="auth-title">PairLift</h1>
               <div class="muted small">Powerlifting training blocks & daily strength targets</div>
             </div>
           </div>

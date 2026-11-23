@@ -92,7 +92,7 @@ export function renderTodayView(containerEl, actions) {
           <div class="lift-card-head">
             ${companionArtHtml(c.slug || c.name, "lg")}
             <div style="min-width:0;">
-              <div style="font-weight:700;font-size:16px;">${escapeHtml(c.name)}</div>
+              <div class="lift-name">${escapeHtml(c.name)}</div>
               <div class="dim small">
                 ${c.today_target ? escapeHtml(c.today_target.phase) : "No target configured"}
               </div>
@@ -197,7 +197,7 @@ export function renderTodayView(containerEl, actions) {
       <div class="row-between" style="flex-wrap:wrap;gap:8px;">
         <div>
           <div class="small muted">${escapeHtml(dash.plan?.plan_name || "Training Block")}</div>
-          <h2 style="margin:2px 0 0;font-size:21px;letter-spacing:-0.02em;">${escapeHtml(block.name)}</h2>
+          <h2 class="hero-title">${escapeHtml(block.name)}</h2>
         </div>
         <div class="row-inline" style="flex-wrap:wrap;">
           <span class="badge badge-plan num">Day ${time.day_number} / ${time.total_days}</span>

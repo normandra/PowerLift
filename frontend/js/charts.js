@@ -12,6 +12,10 @@ function themeColors() {
     primary: cs.getPropertyValue("--coral").trim() || "#FF6B57",
     secondary: cs.getPropertyValue("--mint").trim() || "#2DD4BF",
     violet: cs.getPropertyValue("--violet").trim() || "#A78BFA",
+    bg: cs.getPropertyValue("--bg").trim() || "#0d0c0e",
+    muted: cs.getPropertyValue("--text-muted").trim() || "#a69e94",
+    dim: cs.getPropertyValue("--text-dim").trim() || "#766f68",
+    gridLine: cs.getPropertyValue("--border").trim() || "rgba(255,255,255,0.08)",
   };
 }
 
@@ -95,21 +99,23 @@ export function renderTargetVsActualChart(containerEl, exerciseChart, totalDays,
   const xOf = (d) => pad.l + ((Math.max(1, Math.min(duration, d)) - 1) / Math.max(duration - 1, 1)) * pw;
   const yOf = (v) => pad.t + ph - ((v - yMin) / Math.max(yMax - yMin, 1e-6)) * ph;
 
+  const tc = themeColors();
+  const FONT = 'font-family="var(--font-mono)"';
   let gridHtml = "";
   const yTicks = 5;
   for (let i = 0; i <= yTicks; i++) {
     const val = yMin + ((yMax - yMin) * i) / yTicks;
     const y = yOf(val);
-    gridHtml += `<line x1="${pad.l}" y1="${y}" x2="${W - pad.r}" y2="${y}" stroke="rgba(255,255,255,0.07)" stroke-width="1"/>`;
-    gridHtml += `<text x="${pad.l - 8}" y="${y + 4}" text-anchor="end" fill="#6C778C" font-size="11">${escapeHtml(fmtKg(Math.round(val * 10) / 10, ""))}</text>`;
+    gridHtml += `<line x1="${pad.l}" y1="${y}" x2="${W - pad.r}" y2="${y}" stroke="${escapeHtml(tc.gridLine)}" stroke-width="1"/>`;
+    gridHtml += `<text x="${pad.l - 8}" y="${y + 4}" text-anchor="end" fill="${escapeHtml(tc.dim)}" ${FONT} font-size="10">${escapeHtml(fmtKg(Math.round(val * 10) / 10, ""))}</text>`;
   }
 
   const weekStep = duration > 70 ? 14 : 7;
   for (let d = 1; d <= duration; d += weekStep) {
     const x = xOf(d);
     const wk = Math.floor((d - 1) / 7) + 1;
-    gridHtml += `<line x1="${x}" y1="${pad.t}" x2="${x}" y2="${H - pad.b}" stroke="rgba(255,255,255,0.04)" stroke-width="1"/>`;
-    gridHtml += `<text x="${x}" y="${H - 12}" text-anchor="middle" fill="#6C778C" font-size="11">W${wk}</text>`;
+    gridHtml += `<line x1="${x}" y1="${pad.t}" x2="${x}" y2="${H - pad.b}" stroke="${escapeHtml(tc.gridLine)}" stroke-width="1" opacity="0.5"/>`;
+    gridHtml += `<text x="${x}" y="${H - 12}" text-anchor="middle" fill="${escapeHtml(tc.dim)}" ${FONT} font-size="10">W${wk}</text>`;
   }
 
   let todayHtml = "";
@@ -117,16 +123,15 @@ export function renderTargetVsActualChart(containerEl, exerciseChart, totalDays,
     const tx = xOf(currentDay);
     todayHtml = `
       <line x1="${tx}" y1="${pad.t}" x2="${tx}" y2="${H - pad.b}" stroke="rgba(251,191,36,0.45)" stroke-width="1.5" stroke-dasharray="3 4"/>
-      <text x="${tx}" y="${pad.t - 5}" text-anchor="middle" fill="#FBBF24" font-size="10.5" font-weight="700">Day ${currentDay}</text>
+      <text x="${tx}" y="${pad.t - 5}" text-anchor="middle" fill="${escapeHtml(tc.dim)}" ${FONT} font-size="10" font-weight="700">Day ${currentDay}</text>
     `;
   }
 
-  const tc = themeColors();
   let secPathHtml = "";
   const secPts = targetSeries.filter((t) => t.secondary_target !== null && t.secondary_target !== undefined);
   if (secPts.length > 1) {
     const dAttr = secPts.map((t, i) => `${i === 0 ? "M" : "L"}${xOf(t.day).toFixed(1)},${yOf(t.secondary_target).toFixed(1)}`).join(" ");
-    secPathHtml = `<path d="${dAttr}" fill="none" stroke="${escapeHtml(tc.violet)}" stroke-width="1.6" stroke-dasharray="4 4" opacity="0.7"/>`;
+    secPathHtml = `<path d="${dAttr}" fill="none" stroke="${escapeHtml(tc.violet)}" stroke-width="1.6" stroke-dasharray="4 4" stroke-linecap="round" stroke-linejoin="round" opacity="0.7"/>`;
   }
 
   let targetPathHtml = "";
@@ -134,7 +139,7 @@ export function renderTargetVsActualChart(containerEl, exerciseChart, totalDays,
     const dAttr = targetSeries
       .map((t, i) => `${i === 0 ? "M" : "L"}${xOf(t.day).toFixed(1)},${yOf(t.target).toFixed(1)}`)
       .join(" ");
-    targetPathHtml = `<path d="${dAttr}" fill="none" stroke="#9AA5B8" stroke-width="2" stroke-dasharray="6 5"/>`;
+    targetPathHtml = `<path d="${dAttr}" fill="none" stroke="${escapeHtml(tc.muted)}" stroke-width="2" stroke-dasharray="6 5" stroke-linecap="round" stroke-linejoin="round"/>`;
   }
 
   let actualLineHtml = "";
@@ -143,7 +148,19 @@ export function renderTargetVsActualChart(containerEl, exerciseChart, totalDays,
     const dAttr = validActuals
       .map((a, i) => `${i === 0 ? "M" : "L"}${xOf(a.day).toFixed(1)},${yOf(a.metric_value).toFixed(1)}`)
       .join(" ");
-    actualLineHtml = `<path d="${dAttr}" fill="none" stroke="${escapeHtml(tc.secondary)}" stroke-width="2.5"/>`;
+    const first = validActuals[0];
+    const lastA = validActuals[validActuals.length - 1];
+    const baseY = (H - pad.b).toFixed(1);
+    const areaD = `${dAttr} L${xOf(lastA.day).toFixed(1)},${baseY} L${xOf(first.day).toFixed(1)},${baseY} Z`;
+    actualLineHtml = `
+      <defs>
+        <linearGradient id="tvaGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="${escapeHtml(tc.secondary)}" stop-opacity="0.18"/>
+          <stop offset="100%" stop-color="${escapeHtml(tc.secondary)}" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+      <path d="${areaD}" fill="url(#tvaGrad)" stroke="none"/>
+      <path d="${dAttr}" fill="none" stroke="${escapeHtml(tc.secondary)}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>`;
   }
 
   let oneRmLineHtml = "";
@@ -153,12 +170,13 @@ export function renderTargetVsActualChart(containerEl, exerciseChart, totalDays,
       const dAttr = ormPts
         .map((a, i) => `${i === 0 ? "M" : "L"}${xOf(a.day).toFixed(1)},${yOf(a.one_rm ?? a.estimated_1rm).toFixed(1)}`)
         .join(" ");
-      oneRmLineHtml = `<path d="${dAttr}" fill="none" stroke="#FBBF24" stroke-width="1.8" opacity="0.85"/>`;
+      oneRmLineHtml = `<path d="${dAttr}" fill="none" stroke="#FBBF24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>`;
     }
   }
 
   const tooltipPts = [];
   let dotsHtml = "";
+  const lastValidDay = validActuals.length ? validActuals[validActuals.length - 1] : null;
   for (const a of actuals) {
     const cx = xOf(a.day);
     const orm = a.one_rm ?? a.estimated_1rm;
@@ -174,7 +192,10 @@ export function renderTargetVsActualChart(containerEl, exerciseChart, totalDays,
           ${orm != null ? `<div>1RM / Est: ${escapeHtml(fmtKg(orm))}</div>` : ""}
         `,
       });
-      dotsHtml += `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="5.5" fill="${escapeHtml(col)}" stroke="#0B0D11" stroke-width="2" data-pt-idx="${idx}" style="cursor:pointer"/>`;
+      if (a === lastValidDay) {
+        dotsHtml += `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="10" fill="${escapeHtml(col)}" opacity="0.2" pointer-events="none"/>`;
+      }
+      dotsHtml += `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="5.5" fill="${escapeHtml(col)}" stroke="${escapeHtml(tc.bg)}" stroke-width="2" data-pt-idx="${idx}" style="cursor:pointer"/>`;
       if (show1Rm && orm != null) {
         const oy = yOf(orm);
         dotsHtml += `<circle cx="${cx.toFixed(1)}" cy="${oy.toFixed(1)}" r="3.5" fill="#FBBF24" opacity="0.9"/>`;
@@ -188,7 +209,7 @@ export function renderTargetVsActualChart(containerEl, exerciseChart, totalDays,
         `,
       });
       const oy = yOf(orm);
-      dotsHtml += `<circle cx="${cx.toFixed(1)}" cy="${oy.toFixed(1)}" r="4.5" fill="#FBBF24" stroke="#0B0D11" stroke-width="1.5" data-pt-idx="${idx}" style="cursor:pointer"/>`;
+      dotsHtml += `<circle cx="${cx.toFixed(1)}" cy="${oy.toFixed(1)}" r="4.5" fill="#FBBF24" stroke="${escapeHtml(tc.bg)}" stroke-width="1.5" data-pt-idx="${idx}" style="cursor:pointer"/>`;
     }
   }
 
@@ -234,25 +255,36 @@ export function renderBodyweightChart(containerEl, bwSeries, totalDays, currentD
   const xOf = (d) => pad.l + ((Math.max(1, Math.min(duration, d)) - 1) / Math.max(duration - 1, 1)) * pw;
   const yOf = (v) => pad.t + ph - ((v - yMin) / Math.max(yMax - yMin, 1e-6)) * ph;
 
+  const tc = themeColors();
+  const FONT = 'font-family="var(--font-mono)"';
   let gridHtml = "";
   for (let i = 0; i <= 4; i++) {
     const val = yMin + ((yMax - yMin) * i) / 4;
     const y = yOf(val);
-    gridHtml += `<line x1="${pad.l}" y1="${y}" x2="${W - pad.r}" y2="${y}" stroke="rgba(255,255,255,0.07)" stroke-width="1"/>`;
-    gridHtml += `<text x="${pad.l - 8}" y="${y + 4}" text-anchor="end" fill="#6C778C" font-size="11">${val.toFixed(1)}</text>`;
+    gridHtml += `<line x1="${pad.l}" y1="${y}" x2="${W - pad.r}" y2="${y}" stroke="${escapeHtml(tc.gridLine)}" stroke-width="1"/>`;
+    gridHtml += `<text x="${pad.l - 8}" y="${y + 4}" text-anchor="end" fill="${escapeHtml(tc.dim)}" ${FONT} font-size="10">${val.toFixed(1)}</text>`;
   }
 
   let targetPath = "";
   if (targetSeries.length > 1) {
     const dAttr = targetSeries.map((t, i) => `${i === 0 ? "M" : "L"}${xOf(t.day).toFixed(1)},${yOf(t.target).toFixed(1)}`).join(" ");
-    targetPath = `<path d="${dAttr}" fill="none" stroke="#9AA5B8" stroke-width="2" stroke-dasharray="6 5"/>`;
+    targetPath = `<path d="${dAttr}" fill="none" stroke="${escapeHtml(tc.muted)}" stroke-width="2" stroke-dasharray="6 5" stroke-linecap="round" stroke-linejoin="round"/>`;
   }
 
-  const tc = themeColors();
   let actualPath = "";
   if (actuals.length > 1) {
     const dAttr = actuals.map((a, i) => `${i === 0 ? "M" : "L"}${xOf(a.day).toFixed(1)},${yOf(a.weight).toFixed(1)}`).join(" ");
-    actualPath = `<path d="${dAttr}" fill="none" stroke="${escapeHtml(tc.primary)}" stroke-width="2.5"/>`;
+    const baseY = (H - pad.b).toFixed(1);
+    const areaD = `${dAttr} L${xOf(actuals[actuals.length - 1].day).toFixed(1)},${baseY} L${xOf(actuals[0].day).toFixed(1)},${baseY} Z`;
+    actualPath = `
+      <defs>
+        <linearGradient id="bwGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="${escapeHtml(tc.primary)}" stop-opacity="0.18"/>
+          <stop offset="100%" stop-color="${escapeHtml(tc.primary)}" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+      <path d="${areaD}" fill="url(#bwGrad)" stroke="none"/>
+      <path d="${dAttr}" fill="none" stroke="${escapeHtml(tc.primary)}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>`;
   }
 
   const tooltipPts = [];
@@ -266,11 +298,16 @@ export function renderBodyweightChart(containerEl, bwSeries, totalDays, currentD
         ${a.target != null ? `<div>Target: ${escapeHtml(fmtKg(a.target))}</div>` : ""}
       `,
     });
-    dotsHtml += `<circle cx="${xOf(a.day).toFixed(1)}" cy="${yOf(a.weight).toFixed(1)}" r="5" fill="${a.on_track ? "#34D399" : escapeHtml(tc.primary)}" stroke="#0B0D11" stroke-width="2" data-pt-idx="${idx}" style="cursor:pointer"/>`;
+    const dotCol = a.on_track ? "#34D399" : escapeHtml(tc.primary);
+    if (a === actuals[actuals.length - 1]) {
+      dotsHtml += `<circle cx="${xOf(a.day).toFixed(1)}" cy="${yOf(a.weight).toFixed(1)}" r="10" fill="${dotCol}" opacity="0.2" pointer-events="none"/>`;
+    }
+    dotsHtml += `<circle cx="${xOf(a.day).toFixed(1)}" cy="${yOf(a.weight).toFixed(1)}" r="5" fill="${dotCol}" stroke="${escapeHtml(tc.bg)}" stroke-width="2" data-pt-idx="${idx}" style="cursor:pointer"/>`;
   }
 
   const tx = currentDay >= 1 && currentDay <= duration ? xOf(currentDay) : null;
-  const todayLine = tx ? `<line x1="${tx}" y1="${pad.t}" x2="${tx}" y2="${H - pad.b}" stroke="rgba(251,191,36,0.45)" stroke-width="1.5" stroke-dasharray="3 4"/>` : "";
+  const todayLine = tx ? `<line x1="${tx}" y1="${pad.t}" x2="${tx}" y2="${H - pad.b}" stroke="rgba(251,191,36,0.45)" stroke-width="1.5" stroke-dasharray="3 4"/>
+    <text x="${tx}" y="${pad.t - 5}" text-anchor="middle" fill="${escapeHtml(tc.dim)}" ${FONT} font-size="10" font-weight="700">Day ${currentDay}</text>` : "";
 
   containerEl.innerHTML = `
     <div class="chart-wrap">
@@ -332,7 +369,8 @@ export function renderLiftSparklineHtml(exChart, todayDateStr, uniqueKey = "lift
         </div>
         <svg class="sparkline-svg" viewBox="0 0 240 42" role="img" aria-label="Single session trend">
           <line x1="6" y1="21" x2="232" y2="21" stroke="rgba(255,255,255,0.14)" stroke-width="1.5" stroke-dasharray="4 4"/>
-          <circle cx="119" cy="21" r="4" fill="#2DD4BF" stroke="#0B0D11" stroke-width="1.5"/>
+          <circle cx="119" cy="21" r="7" fill="#2DD4BF" opacity="0.22"/>
+          <circle cx="119" cy="21" r="4" fill="#2DD4BF" stroke="${escapeHtml(themeColors().bg)}" stroke-width="1.5"/>
         </svg>
         <div class="sparkline-foot">
           <span>${escapeHtml(formatShortDate(only.date))} · ${escapeHtml(fmtKg(only.metric_value))}</span>
@@ -402,10 +440,11 @@ export function renderLiftSparklineHtml(exChart, todayDateStr, uniqueKey = "lift
   const baselineY = yOf(firstVal).toFixed(1);
   const gradId = `spark-grad-${String(uniqueKey || slugAttr || "lift").replace(/[^a-zA-Z0-9_-]/g, "")}`;
 
+  const sparkBg = themeColors().bg;
   const dotsHtml = coords
     .map((pt, idx) =>
       idx === coords.length - 1
-        ? `<circle cx="${pt.x.toFixed(1)}" cy="${pt.y.toFixed(1)}" r="4" fill="${strokeCol}" stroke="#0B0D11" stroke-width="1.5"/>`
+        ? `<circle cx="${pt.x.toFixed(1)}" cy="${pt.y.toFixed(1)}" r="7" fill="${strokeCol}" opacity="0.22"/><circle cx="${pt.x.toFixed(1)}" cy="${pt.y.toFixed(1)}" r="4" fill="${strokeCol}" stroke="${escapeHtml(sparkBg)}" stroke-width="1.5"/>`
         : `<circle cx="${pt.x.toFixed(1)}" cy="${pt.y.toFixed(1)}" r="2.6" fill="${strokeCol}" opacity="0.85"/>`
     )
     .join("");

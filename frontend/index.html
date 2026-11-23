@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <meta name="theme-color" content="#111318" />
+  <meta name="theme-color" content="#0d0c0e" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -12,6 +12,12 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icons/icon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,600..800,100,1;1,9..144,600..700,100,1&family=JetBrains+Mono:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+    rel="stylesheet"
+  />
   <script>
     (function () {
       var t = localStorage.getItem("pairlift_theme");
@@ -19,17 +25,17 @@
         document.documentElement.dataset.theme = t;
         var meta = document.querySelector('meta[name="theme-color"]');
         if (meta) {
-          meta.setAttribute("content", t === "blue" ? "#070D19" : "#140912");
+          meta.setAttribute("content", t === "blue" ? "#080d1a" : "#150a14");
         }
       }
     })();
   </script>
-  <link rel="stylesheet" href="./css/styles.css?v=10" />
+  <link rel="stylesheet" href="./css/styles.css?v=11" />
 </head>
 <body>
   <div id="app"></div>
   <div id="modal-root"></div>
   <div id="toast-root" class="toast-root" aria-live="polite"></div>
-  <script type="module" src="./js/app.js?v=10"></script>
+  <script type="module" src="./js/app.js?v=11"></script>
 </body>
 </html>
