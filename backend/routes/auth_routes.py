@@ -32,7 +32,7 @@ def _fetch_user_bundle(conn: sqlite3.Connection, user_id: int) -> Dict[str, Any]
         for r in conn.execute(
             """
             SELECT b.*,
-                   (SELECT COUNT(*) FROM block_exercises be WHERE be.block_id = b.id) AS exercise_count
+                   (SELECT COUNT(*) FROM block_exercises be WHERE be.block_id = b.id AND be.is_tracked = 1) AS exercise_count
             FROM blocks b
             WHERE b.user_id = ?
             ORDER BY CASE WHEN b.status = 'active' THEN 0 ELSE 1 END, b.start_date DESC, b.id DESC

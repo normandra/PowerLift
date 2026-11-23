@@ -214,7 +214,18 @@ function mergeStaticRows(localRows, cloudRows, deletedIds, naturalKeyFn) {
       byId.set(id, row);
       if (nk) idByNatural.set(nk, id);
     } else {
-      byId.set(id, { ...byId.get(id), ...row });
+      const cur = byId.get(id);
+      const curTs = tsMs(cur.updated_at);
+      const rowTs = tsMs(row.updated_at);
+      if (curTs && rowTs) {
+        // Both sides are versioned: the newer row wins (ties favor local).
+        byId.set(id, rowTs >= curTs ? { ...cur, ...row } : { ...row, ...cur });
+      } else if (curTs && !rowTs) {
+        // Legacy local row without a version stamp: keep the cloud's versioned state.
+        byId.set(id, { ...row, ...cur });
+      } else {
+        byId.set(id, { ...cur, ...row });
+      }
     }
   }
   return { rows: Array.from(byId.values()), idRemap };
@@ -243,6 +254,8 @@ function normalizeSnapshotUuids(snap, uid) {
     id: mapId(e.id),
     block_id: mapId(e.block_id),
     user_id: uid,
+    is_tracked: e.is_tracked !== false,
+    updated_at: e.updated_at || undefined,
   }));
 
   const plans = (snap.plans || []).map((p) => ({
@@ -325,6 +338,8 @@ function toCloudExerciseRow(e, uid) {
     slug: String(e.slug || "lift"),
     default_increment: Number(e.default_increment || 2.5),
     sort_order: Number(e.sort_order ?? 0),
+    is_tracked: e.is_tracked !== false,
+    updated_at: e.updated_at || new Date().toISOString(),
   };
 }
 

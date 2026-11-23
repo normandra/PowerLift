@@ -264,3 +264,137 @@ def test_legacy_group_schema_migrates_cleanly(tmp_path, monkeypatch):
     assert "reactions" not in tables
     assert "nudges" not in tables
     conn2.close()
+
+
+def test_tracking_toggles_hide_and_restore_without_data_loss(tmp_path, monkeypatch):
+    client = _make_client(tmp_path, monkeypatch, "test_toggles.db")
+    assert (
+        client.post(
+            "/api/auth/register",
+            json={"username": "toggler", "display_name": "Toggler", "password": "secret"},
+        ).status_code
+        == 201
+    )
+    blk = client.post(
+        "/api/blocks",
+        json={"name": "Toggle Block", "start_date": "2026-11-01", "duration_weeks": 14, "track_bodyweight": True},
+    ).json()
+    block_id = blk["block"]["id"]
+    ex = {e["name"]: e["id"] for e in blk["exercises"]}
+    assert all(e["is_tracked"] is True for e in blk["exercises"])
+
+    client.put(
+        f"/api/blocks/{block_id}/my-plan",
+        json={
+            "plan_type": "linear",
+            "bodyweight_start": 68.4,
+            "bodyweight_goal": 66.0,
+            "targets": [
+                {"block_exercise_id": ex["Squat"], "start_weight": 60, "goal_weight": 120, "increment": 2.5},
+                {"block_exercise_id": ex["Bench"], "start_weight": 50, "goal_weight": 100, "increment": 2.5},
+                {"block_exercise_id": ex["Deadlift"], "start_weight": 80, "goal_weight": 160, "increment": 2.5},
+            ],
+        },
+    )
+    for name, wt in (("Squat", 60.0), ("Bench", 40.0), ("Deadlift", 80.0)):
+        assert (
+            client.post(
+                f"/api/blocks/{block_id}/logs",
+                json={"block_exercise_id": ex[name], "log_date": "2026-11-05", "working_weight": wt},
+            ).status_code
+            == 201
+        )
+    assert client.post(f"/api/blocks/{block_id}/bodyweight", json={"log_date": "2026-11-05", "weight": 68.0}).status_code == 200
+
+    ref = "ref_date=2026-11-06"
+
+    def snapshot():
+        dash = client.get(f"/api/blocks/{block_id}/dashboard?{ref}").json()
+        wk = client.get(f"/api/blocks/{block_id}/weekly?week=1&{ref}").json()
+        charts = client.get(f"/api/blocks/{block_id}/charts?{ref}").json()
+        return dash, wk, charts
+
+    dash, wk, charts = snapshot()
+    assert {c["name"] for c in dash["today_cards"]} == {"Squat", "Bench", "Deadlift"}
+    assert dash["stats"]["total_kg_lifted"] == 180.0
+    assert dash["bodyweight_card"]["enabled"] is True
+    assert charts["bodyweight"]["enabled"] is True
+    baseline_total = dash["stats"]["total_kg_lifted"]
+
+    # Pause bodyweight + Bench
+    res = client.patch(
+        f"/api/blocks/{block_id}",
+        json={"track_bodyweight": False, "exercise_tracking": {ex["Bench"]: False}},
+    )
+    assert res.status_code == 200
+    detail = res.json()
+    assert detail["block"]["track_bodyweight"] == 0
+    flags = {e["name"]: e["is_tracked"] for e in detail["exercises"]}
+    assert flags == {"Squat": True, "Bench": False, "Deadlift": True}
+    assert len(detail["exercises"]) == 3  # paused lift is still listed for Setup
+
+    dash, wk, charts = snapshot()
+    assert {c["name"] for c in dash["today_cards"]} == {"Squat", "Deadlift"}
+    assert dash["bodyweight_card"]["enabled"] is False
+    assert dash["stats"]["total_kg_lifted"] == baseline_total - 40.0
+    assert {r["exercise_name"] for r in dash["recent_logs"]} == {"Squat", "Deadlift"}
+    assert {e["exercise_name"] for e in wk["exercises"]} == {"Squat", "Deadlift"}
+    assert {e["name"] for e in charts["exercises"]} == {"Squat", "Deadlift"}
+    assert charts["bodyweight"]["enabled"] is False
+
+    blocks = client.get("/api/blocks").json()
+    assert blocks[0]["exercise_count"] == 2
+
+    # Plan targets & plan BW survive while paused
+    plan = client.get(f"/api/blocks/{block_id}").json()["plan"]
+    assert plan["bodyweight_start"] == 68.4 and plan["bodyweight_goal"] == 66.0
+    assert {t["block_exercise_id"] for t in plan["targets"]} == set(ex.values())
+
+    # Resume everything
+    res = client.patch(
+        f"/api/blocks/{block_id}",
+        json={"track_bodyweight": True, "exercise_tracking": {ex["Bench"]: True}},
+    )
+    assert res.status_code == 200
+    assert all(e["is_tracked"] is True for e in res.json()["exercises"])
+
+    dash, wk, charts = snapshot()
+    assert {c["name"] for c in dash["today_cards"]} == {"Squat", "Bench", "Deadlift"}
+    bench_card = next(c for c in dash["today_cards"] if c["name"] == "Bench")
+    assert bench_card["latest_log"]["working_weight"] == 40.0
+    assert bench_card["start_weight"] == 50.0 and bench_card["goal_weight"] == 100.0
+    assert dash["stats"]["total_kg_lifted"] == baseline_total
+    assert dash["bodyweight_card"]["enabled"] is True
+    assert dash["bodyweight_card"]["latest_log"]["weight"] == 68.0
+    assert len(next(e for e in charts["exercises"] if e["name"] == "Bench")["actual_points"]) == 1
+    assert charts["bodyweight"]["enabled"] is True
+    assert len(charts["bodyweight"]["actual_points"]) == 1
+    assert client.get("/api/blocks").json()[0]["exercise_count"] == 3
+
+
+def test_init_db_adds_is_tracked_to_existing_block_exercises(tmp_path, monkeypatch):
+    db_file = tmp_path / "pre_tracking.db"
+    conn = sqlite3.connect(str(db_file))
+    conn.executescript(
+        """
+        CREATE TABLE block_exercises (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            block_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            slug TEXT NOT NULL,
+            default_increment REAL NOT NULL DEFAULT 2.5,
+            sort_order INTEGER NOT NULL DEFAULT 0
+        );
+        INSERT INTO block_exercises(block_id, name, slug) VALUES (1, 'Squat', 'squat');
+        """
+    )
+    conn.commit()
+    conn.close()
+    monkeypatch.setenv("PAIRLIFT_DB", str(db_file))
+    init_db()
+    init_db()  # idempotent
+    conn = sqlite3.connect(str(db_file))
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(block_exercises)").fetchall()}
+    assert "is_tracked" in cols
+    assert conn.execute("SELECT is_tracked FROM block_exercises").fetchone()[0] == 1
+    conn.close()

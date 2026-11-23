@@ -20,6 +20,18 @@ export function renderProgressView(containerEl, actions) {
     ...(hasBw ? [{ slug: "__bodyweight__", label: "Bodyweight" }] : []),
   ];
 
+  if (!tabs.length) {
+    containerEl.innerHTML = `
+      <div class="card" style="display:flex;flex-direction:column;gap:10px;align-items:flex-start;">
+        <h3 class="section-title" style="margin:0;">Strength &amp; Target Curves</h3>
+        <div class="small muted">All lifts and bodyweight tracking are paused. Past logs are safe — turn tracking back on in Setup to see charts again.</div>
+        <button type="button" class="btn btn-primary btn-sm" id="c-open-setup">Manage in Setup</button>
+      </div>
+    `;
+    containerEl.querySelector("#c-open-setup").addEventListener("click", () => actions.switchTab("setup"));
+    return;
+  }
+
   if (!state.selectedChartSlug || !tabs.some((t) => t.slug === state.selectedChartSlug)) {
     state.selectedChartSlug = tabs[0]?.slug || null;
   }

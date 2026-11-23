@@ -222,7 +222,19 @@ export function renderTodayView(containerEl, actions) {
         <h3 class="section-title">Today's Targets</h3>
         <span class="small muted">Sparse logging — train on your schedule</span>
       </div>
-      <div class="grid-2">${todayCardsHtml}</div>
+      ${
+        today_cards.length
+          ? `<div class="grid-2">${todayCardsHtml}</div>`
+          : `
+            <div class="card-subtle" style="display:flex;flex-direction:column;gap:10px;align-items:flex-start;">
+              <div>
+                <div style="font-weight:700;font-size:14.5px;">All lifts are paused</div>
+                <div class="small muted">Past logs and targets are safe. Turn tracking back on for any lift in Setup.</div>
+              </div>
+              <button type="button" class="btn btn-primary btn-sm" id="t-manage-lifts">Manage in Setup</button>
+            </div>
+          `
+      }
     </section>
 
     ${bwHtml}
@@ -273,6 +285,11 @@ export function renderTodayView(containerEl, actions) {
   const bwBtn = containerEl.querySelector("#t-log-bw");
   if (bwBtn) {
     bwBtn.addEventListener("click", () => openBodyweightModal(actions.refreshActiveBlock));
+  }
+
+  const manageLiftsBtn = containerEl.querySelector("#t-manage-lifts");
+  if (manageLiftsBtn) {
+    manageLiftsBtn.addEventListener("click", () => actions.switchTab("setup"));
   }
 
   const setupBtn = containerEl.querySelector("#t-setup-plan");

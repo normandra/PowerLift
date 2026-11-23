@@ -37,6 +37,7 @@ class BlockUpdateRequest(BaseModel):
     weekly_session_goal: Optional[int] = Field(default=None, ge=1, le=14)
     track_bodyweight: Optional[bool] = None
     add_exercises: Optional[List[BlockExerciseInput]] = None
+    exercise_tracking: Optional[Dict[int, bool]] = None
 
 
 class ExerciseTargetInput(BaseModel):

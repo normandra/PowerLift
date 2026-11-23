@@ -33,13 +33,14 @@ def _slugify(name: str) -> str:
 
 def _load_block_detail(conn: sqlite3.Connection, block: sqlite3.Row, user_id: int) -> Dict[str, Any]:
     block_id = block["id"]
-    exercises = [
-        dict(r)
-        for r in conn.execute(
-            "SELECT * FROM block_exercises WHERE block_id = ? ORDER BY sort_order, id",
-            (block_id,),
-        ).fetchall()
-    ]
+    exercises = []
+    for r in conn.execute(
+        "SELECT * FROM block_exercises WHERE block_id = ? ORDER BY sort_order, id",
+        (block_id,),
+    ).fetchall():
+        ex = dict(r)
+        ex["is_tracked"] = bool(ex.get("is_tracked", 1))
+        exercises.append(ex)
     plan_row = conn.execute(
         "SELECT * FROM member_plans WHERE block_id = ? AND user_id = ?",
         (block_id, user_id),
@@ -86,7 +87,7 @@ def list_blocks(current_user: Dict[str, Any] = Depends(get_current_user)) -> Lis
         rows = conn.execute(
             """
             SELECT b.*,
-                   (SELECT COUNT(*) FROM block_exercises be WHERE be.block_id = b.id) AS exercise_count
+                   (SELECT COUNT(*) FROM block_exercises be WHERE be.block_id = b.id AND be.is_tracked = 1) AS exercise_count
             FROM blocks b
             WHERE b.user_id = ?
             ORDER BY CASE WHEN b.status = 'active' THEN 0 ELSE 1 END, b.start_date DESC, b.id DESC
@@ -196,6 +197,13 @@ def update_block(
         if updates:
             params.append(block_id)
             conn.execute(f"UPDATE blocks SET {', '.join(updates)} WHERE id = ?", params)
+
+        if payload.exercise_tracking:
+            for ex_id, flag in payload.exercise_tracking.items():
+                conn.execute(
+                    "UPDATE block_exercises SET is_tracked = ? WHERE id = ? AND block_id = ?",
+                    (1 if flag else 0, int(ex_id), block_id),
+                )
 
         if payload.add_exercises:
             existing_rows = conn.execute(

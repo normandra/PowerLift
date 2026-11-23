@@ -104,6 +104,13 @@ def _migrate_legacy_group_schema(conn: sqlite3.Connection) -> None:
         conn.execute("PRAGMA foreign_keys = ON;")
 
 
+def _ensure_block_exercises_is_tracked(conn: sqlite3.Connection) -> None:
+    """Non-destructively add block_exercises.is_tracked to databases created before it existed."""
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(block_exercises)").fetchall()}
+    if cols and "is_tracked" not in cols:
+        conn.execute("ALTER TABLE block_exercises ADD COLUMN is_tracked INTEGER NOT NULL DEFAULT 1")
+
+
 def init_db() -> None:
     """Create all 8 single-user database tables and indexes (migrating v0 schemas if needed)."""
     with get_conn() as conn:
@@ -145,6 +152,7 @@ def init_db() -> None:
                 slug TEXT NOT NULL,
                 default_increment REAL NOT NULL DEFAULT 2.5,
                 sort_order INTEGER NOT NULL DEFAULT 0,
+                is_tracked INTEGER NOT NULL DEFAULT 1,
                 UNIQUE (block_id, slug)
             );
 
@@ -207,3 +215,4 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_bodyweight_block_user ON bodyweight_logs(block_id, user_id, log_date);
             """
         )
+        _ensure_block_exercises_is_tracked(conn)

@@ -25,10 +25,11 @@ def _load_block_context(conn: sqlite3.Connection, block: sqlite3.Row, user_id: i
     """Load block exercises, user's plan, per-exercise targets, workout logs, and bodyweight logs."""
     block_id = block["id"]
 
+    # Paused lifts (is_tracked = 0) are hidden from analytics; their logs/targets stay stored untouched.
     exercises = [
         dict(r)
         for r in conn.execute(
-            "SELECT * FROM block_exercises WHERE block_id = ? ORDER BY sort_order, id",
+            "SELECT * FROM block_exercises WHERE block_id = ? AND is_tracked = 1 ORDER BY sort_order, id",
             (block_id,),
         ).fetchall()
     ]
@@ -58,7 +59,7 @@ def _load_block_context(conn: sqlite3.Connection, block: sqlite3.Row, user_id: i
         SELECT wl.*, be.name AS exercise_name, be.slug AS exercise_slug, be.default_increment
         FROM workout_logs wl
         JOIN block_exercises be ON be.id = wl.block_exercise_id
-        WHERE wl.block_id = ? AND wl.user_id = ?
+        WHERE wl.block_id = ? AND wl.user_id = ? AND be.is_tracked = 1
         ORDER BY wl.log_date ASC, wl.id ASC
         """,
         (block_id, user_id),

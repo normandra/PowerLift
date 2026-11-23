@@ -4,7 +4,7 @@
 
 import { IS_LOCAL_MODE, api } from "../api.js";
 import { openCreateBlockModal } from "../modals.js";
-import { THEMES, avatarHtml, escapeHtml, fmtKg, renderCompanionPickerCardsHtml, showToast, state, todayIso } from "../state.js";
+import { THEMES, avatarHtml, companionArtHtml, escapeHtml, fmtKg, renderCompanionPickerCardsHtml, showToast, state, todayIso } from "../state.js";
 
 const GOOGLE_ICON_SVG = `<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="#34A853" d="M12 24c2.75 0 5.06-.91 6.75-2.46l-3.3-2.56c-.91.61-2.08.97-3.45.97-2.65 0-4.9-1.79-5.7-4.2H2.51v2.64A12 12 0 0 0 12 24z"/><path fill="#4285F4" d="M23.5 12.27c0-.79-.07-1.54-.2-2.27H12v4.3h6.46a5.52 5.52 0 0 1-2.4 3.63l3.3 2.56c1.93-1.78 3.14-4.41 3.14-8.22z"/><path fill="#FBBC05" d="M5.92 14.35a7.2 7.2 0 0 1 0-4.7V7.01H2.51a12 12 0 0 0 0 9.98l3.41-2.64z"/><path fill="#EA4335" d="M12 4.75c1.5 0 2.84.52 3.9 1.52l2.92-2.92C17.05 1.7 14.74.75 12 .75A12 12 0 0 0 2.51 7.01l3.41 2.64C6.72 7.24 9.15 4.75 12 4.75z"/></svg>`;
 
@@ -16,6 +16,15 @@ function defaultWeightsForSlug(slug) {
   if (slug === "pullup") return { start: 10, goal: 25, inc: 1.25 };
   if (slug === "row") return { start: 40, goal: 70, inc: 1.25 };
   return { start: 40, goal: 80, inc: 2.5 };
+}
+
+function toggleSwitchHtml(attrs, checked, label) {
+  return `
+    <label class="toggle-switch">
+      <input type="checkbox" role="switch" ${attrs} ${checked ? "checked" : ""} aria-label="${escapeHtml(label)}" />
+      <span class="toggle-track" aria-hidden="true"></span>
+    </label>
+  `;
 }
 
 export function renderSetupView(containerEl, actions) {
@@ -260,25 +269,36 @@ export function renderSetupView(containerEl, actions) {
             <div id="pf-plan-desc" class="small muted"></div>
           </div>
 
-          ${
-            blkDetail.block.track_bodyweight
-              ? `
-                <div class="card-subtle" style="display:flex;flex-direction:column;gap:8px;">
-                  <div style="font-weight:700;font-size:13.5px;">Bodyweight Target Curve (0.1 kg daily target)</div>
-                  <div class="grid-2">
-                    <div class="form-field">
-                      <label for="pf-bw-start">Start BW (kg)</label>
-                      <input id="pf-bw-start" type="number" step="0.1" value="${escapeHtml(myPlan?.bodyweight_start ?? "")}" placeholder="e.g. 68.4" />
-                    </div>
-                    <div class="form-field">
-                      <label for="pf-bw-goal">Goal BW (kg)</label>
-                      <input id="pf-bw-goal" type="number" step="0.1" value="${escapeHtml(myPlan?.bodyweight_goal ?? "")}" placeholder="e.g. 66.0" />
-                    </div>
+          ${(() => {
+            const bwOn = Boolean(blkDetail.block.track_bodyweight);
+            return `
+              <div class="card-subtle ${bwOn ? "" : "card-paused"}" id="pf-bw-card" style="display:flex;flex-direction:column;gap:10px;">
+                <div class="plan-ex-head">
+                  <div style="min-width:0;">
+                    <div style="font-weight:700;font-size:14px;">Bodyweight Tracking</div>
+                    <div class="small muted">${bwOn ? "0.1 kg daily target curve" : "Paused — hidden from Today &amp; Charts"}</div>
                   </div>
+                  ${toggleSwitchHtml('id="s-toggle-bw"', bwOn, "Track bodyweight")}
                 </div>
-              `
-              : ""
-          }
+                ${
+                  bwOn
+                    ? `
+                      <div class="grid-2">
+                        <div class="form-field">
+                          <label for="pf-bw-start">Start BW (kg)</label>
+                          <input id="pf-bw-start" type="number" step="0.1" value="${escapeHtml(myPlan?.bodyweight_start ?? "")}" placeholder="e.g. 68.4" />
+                        </div>
+                        <div class="form-field">
+                          <label for="pf-bw-goal">Goal BW (kg)</label>
+                          <input id="pf-bw-goal" type="number" step="0.1" value="${escapeHtml(myPlan?.bodyweight_goal ?? "")}" placeholder="e.g. 66.0" />
+                        </div>
+                      </div>
+                    `
+                    : ""
+                }
+              </div>
+            `;
+          })()}
 
           <div id="pf-exercises" style="display:flex;flex-direction:column;gap:10px;">
             ${exercises
@@ -291,24 +311,41 @@ export function renderSetupView(containerEl, actions) {
                 const metric = existing ? existing.target_metric : "working_weight";
                 const exPlan = existing ? existing.plan_type : selectedPlanType;
                 const cfg = existing?.config || {};
+                const tracked = ex.is_tracked !== false;
+                const headHtml = `
+                    <div class="plan-ex-head">
+                      <div class="plan-ex-title">
+                        ${companionArtHtml(ex.slug || ex.name, "xs")}
+                        <strong>${escapeHtml(ex.name)}</strong>
+                        ${tracked ? "" : `<span class="badge badge-waiting">Paused</span>`}
+                      </div>
+                      ${toggleSwitchHtml(`data-toggle-ex="${escapeHtml(ex.id)}"`, tracked, `Track ${ex.name}`)}
+                    </div>
+                `;
+                if (!tracked) {
+                  return `
+                  <div class="card-subtle card-paused" data-ex-target="${escapeHtml(ex.id)}" data-paused="1" style="display:flex;flex-direction:column;gap:8px;">
+                    ${headHtml}
+                    <div class="small muted">Paused — hidden from Today, Weekly &amp; Charts. Past logs are kept safe.</div>
+                  </div>
+                  `;
+                }
                 return `
                   <div class="card-subtle" data-ex-target="${escapeHtml(ex.id)}" style="display:flex;flex-direction:column;gap:10px;">
-                    <div class="row-between" style="flex-wrap:wrap;gap:8px;">
-                      <strong>${escapeHtml(ex.name)}</strong>
-                      <div class="row-inline">
-                        <select data-field="plan_type" style="width:auto;padding:5px 8px;font-size:12.5px;">
-                          ${presets
-                            .map(
-                              (p) =>
-                                `<option value="${escapeHtml(p.id)}" ${p.id === exPlan ? "selected" : ""}>${escapeHtml(p.title)}</option>`
-                            )
-                            .join("")}
-                        </select>
-                        <select data-field="target_metric" style="width:auto;padding:5px 8px;font-size:12.5px;">
-                          <option value="working_weight" ${metric === "working_weight" ? "selected" : ""}>Target Working Wt</option>
-                          <option value="one_rm" ${metric === "one_rm" ? "selected" : ""}>Target 1RM</option>
-                        </select>
-                      </div>
+                    ${headHtml}
+                    <div class="plan-ex-controls">
+                      <select data-field="plan_type" aria-label="Plan type for ${escapeHtml(ex.name)}">
+                        ${presets
+                          .map(
+                            (p) =>
+                              `<option value="${escapeHtml(p.id)}" ${p.id === exPlan ? "selected" : ""}>${escapeHtml(p.title)}</option>`
+                          )
+                          .join("")}
+                      </select>
+                      <select data-field="target_metric" aria-label="Target metric for ${escapeHtml(ex.name)}">
+                        <option value="working_weight" ${metric === "working_weight" ? "selected" : ""}>Target Working Wt</option>
+                        <option value="one_rm" ${metric === "one_rm" ? "selected" : ""}>Target 1RM</option>
+                      </select>
                     </div>
 
                     <div class="grid-3">
@@ -569,7 +606,7 @@ export function renderSetupView(containerEl, actions) {
       updateDesc();
       const newType = masterSelect.value;
       const preset = presets.find((x) => x.id === newType);
-      for (const cardEl of planForm.querySelectorAll("[data-ex-target]")) {
+      for (const cardEl of planForm.querySelectorAll("[data-ex-target]:not([data-paused])")) {
         const pSel = cardEl.querySelector('[data-field="plan_type"]');
         pSel.value = newType;
         if (preset?.default_metric) {
@@ -616,7 +653,7 @@ export function renderSetupView(containerEl, actions) {
       };
     };
 
-    for (const cardEl of planForm.querySelectorAll("[data-ex-target]")) {
+    for (const cardEl of planForm.querySelectorAll("[data-ex-target]:not([data-paused])")) {
       const exSel = cardEl.querySelector('[data-field="plan_type"]');
       exSel.addEventListener("change", () => syncExtraFields(cardEl, exSel.value));
 
@@ -633,17 +670,83 @@ export function renderSetupView(containerEl, actions) {
       });
     }
 
+    // Paused lifts keep their saved target untouched when the plan is saved.
+    const preservedPayload = (cardEl) => {
+      const exId = String(cardEl.getAttribute("data-ex-target"));
+      const t = targetByExId.get(exId);
+      if (!t) return null;
+      return {
+        block_exercise_id: exId,
+        plan_type: t.plan_type,
+        target_metric: t.target_metric,
+        start_weight: Number(t.start_weight),
+        goal_weight: Number(t.goal_weight),
+        increment: Number(t.increment),
+        config: t.config || {},
+      };
+    };
+
+    const bwToggle = planForm.querySelector("#s-toggle-bw");
+    if (bwToggle) {
+      bwToggle.addEventListener("change", async () => {
+        const next = bwToggle.checked;
+        bwToggle.disabled = true;
+        const keepY = window.scrollY;
+        try {
+          await api.updateBlock(blkDetail.block.id, { track_bodyweight: next });
+          showToast(next ? "Bodyweight tracking on" : "Bodyweight tracking paused — logs kept safe");
+          await actions.refreshActiveBlock();
+          window.scrollTo(0, keepY);
+        } catch (err) {
+          bwToggle.checked = !next;
+          bwToggle.disabled = false;
+          showToast(err.message, true);
+        }
+      });
+    }
+
+    for (const exToggle of planForm.querySelectorAll("[data-toggle-ex]")) {
+      exToggle.addEventListener("change", async () => {
+        const next = exToggle.checked;
+        const exId = exToggle.getAttribute("data-toggle-ex");
+        const exName = exercises.find((x) => String(x.id) === String(exId))?.name || "Lift";
+        exToggle.disabled = true;
+        const keepY = window.scrollY;
+        try {
+          await api.updateBlock(blkDetail.block.id, { exercise_tracking: { [exId]: next } });
+          showToast(next ? `${exName} tracking on` : `${exName} paused — logs kept safe`);
+          await actions.refreshAllBlocks();
+          window.scrollTo(0, keepY);
+        } catch (err) {
+          exToggle.checked = !next;
+          exToggle.disabled = false;
+          showToast(err.message, true);
+        }
+      });
+    }
+
     planForm.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const targets = Array.from(planForm.querySelectorAll("[data-ex-target]"), readCardPayload);
+      const targets = Array.from(planForm.querySelectorAll("[data-ex-target]"), (cardEl) =>
+        cardEl.hasAttribute("data-paused") ? preservedPayload(cardEl) : readCardPayload(cardEl)
+      ).filter(Boolean);
       const bwStartEl = planForm.querySelector("#pf-bw-start");
       const bwGoalEl = planForm.querySelector("#pf-bw-goal");
+      const bwOn = Boolean(blkDetail.block.track_bodyweight);
 
       try {
         await api.saveMyPlan(blkDetail.block.id, {
           plan_type: masterSelect.value,
-          bodyweight_start: bwStartEl && bwStartEl.value !== "" ? Number(bwStartEl.value) : null,
-          bodyweight_goal: bwGoalEl && bwGoalEl.value !== "" ? Number(bwGoalEl.value) : null,
+          bodyweight_start: bwOn
+            ? bwStartEl && bwStartEl.value !== ""
+              ? Number(bwStartEl.value)
+              : null
+            : myPlan?.bodyweight_start ?? null,
+          bodyweight_goal: bwOn
+            ? bwGoalEl && bwGoalEl.value !== ""
+              ? Number(bwGoalEl.value)
+              : null
+            : myPlan?.bodyweight_goal ?? null,
           targets,
         });
         showToast("Training plan saved!");

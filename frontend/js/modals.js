@@ -61,14 +61,19 @@ export function openLogWorkoutModal(preselectedExerciseId = null, onSaved = null
   const dash = state.cache.dashboard;
   const block = state.activeBlockDetail?.block || dash?.block;
   const cards = dash?.today_cards || [];
-  const exercises = state.activeBlockDetail?.exercises || cards.map((c) => ({
+  const allExercises = state.activeBlockDetail?.exercises || cards.map((c) => ({
     id: c.block_exercise_id,
     name: c.name,
     default_increment: c.default_increment || 2.5,
   }));
+  const exercises = allExercises.filter((e) => e.is_tracked !== false);
 
-  if (!block || !exercises.length) {
+  if (!block || !allExercises.length) {
     showToast("Create or select a training block first.", true);
+    return;
+  }
+  if (!exercises.length) {
+    showToast("All lifts are paused — enable tracking in Setup.", true);
     return;
   }
 
@@ -678,7 +683,7 @@ export function openLogHistoryModal(initialExId = null, onChanged = null) {
   const renderHistory = () => {
     const dash = state.cache.dashboard;
     const allLogs = dash?.recent_logs || [];
-    const exercises = state.activeBlockDetail?.exercises || [];
+    const exercises = (state.activeBlockDetail?.exercises || []).filter((e) => e.is_tracked !== false);
     if (filterExId !== "all" && !exercises.some((e) => String(e.id) === filterExId)) {
       filterExId = "all";
     }

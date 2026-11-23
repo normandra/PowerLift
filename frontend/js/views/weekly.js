@@ -32,6 +32,9 @@ export function renderWeeklyView(containerEl, actions) {
     `
     )
     .join("");
+  const tableRowsHtml =
+    rowsHtml ||
+    `<tr><td colspan="5" class="muted small" style="padding:18px 8px;text-align:center;">All lifts are paused — enable tracking in Setup to see weekly results here.</td></tr>`;
 
   containerEl.innerHTML = `
     <div class="card" style="display:flex;flex-direction:column;gap:10px;">
@@ -105,7 +108,7 @@ export function renderWeeklyView(containerEl, actions) {
               <th>Status</th>
             </tr>
           </thead>
-          <tbody>${rowsHtml}</tbody>
+          <tbody>${tableRowsHtml}</tbody>
         </table>
       </div>
     </div>

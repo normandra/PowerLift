@@ -92,9 +92,14 @@ function requireBlock(store, blockId) {
   return block;
 }
 
+function isExerciseTracked(ex) {
+  return ex?.is_tracked !== false;
+}
+
 function sortBlocks(blocks, exercises) {
   const countByBlock = new Map();
   for (const ex of exercises) {
+    if (!isExerciseTracked(ex)) continue;
     countByBlock.set(ex.block_id, (countByBlock.get(ex.block_id) || 0) + 1);
   }
   return [...blocks]
@@ -114,7 +119,8 @@ function sortBlocks(blocks, exercises) {
 function buildBlockDetail(store, block) {
   const exercises = store.block_exercises
     .filter((e) => e.block_id === block.id)
-    .sort((a, b) => a.sort_order - b.sort_order);
+    .sort((a, b) => a.sort_order - b.sort_order)
+    .map((e) => ({ ...e, is_tracked: isExerciseTracked(e) }));
 
   const planRow = store.plans.find((p) => p.block_id === block.id) || null;
   let plan = null;
@@ -275,6 +281,8 @@ function seedSampleBlock(store) {
       slug,
       default_increment: inc,
       sort_order,
+      is_tracked: true,
+      updated_at: now,
     });
   }
 
@@ -552,6 +560,8 @@ export const localStore = {
         slug,
         default_increment: Number(ex.default_increment || 2.5),
         sort_order: idx,
+        is_tracked: true,
+        updated_at: now,
       });
     });
 
@@ -579,6 +589,17 @@ export const localStore = {
     }
     block.updated_at = nowIso();
 
+    if (payload.exercise_tracking && typeof payload.exercise_tracking === "object") {
+      const stamp = nowIso();
+      for (const [exId, flag] of Object.entries(payload.exercise_tracking)) {
+        const ex = store.block_exercises.find((e) => String(e.id) === String(exId) && e.block_id === block.id);
+        if (!ex) continue;
+        ex.is_tracked = Boolean(flag);
+        ex.updated_at = stamp;
+      }
+      block.updated_at = stamp;
+    }
+
     if (Array.isArray(payload.add_exercises)) {
       const existing = store.block_exercises.filter((e) => e.block_id === block.id);
       const seen = new Set(existing.map((e) => e.slug));
@@ -601,6 +622,8 @@ export const localStore = {
           slug,
           default_increment: Number(ex.default_increment || 2.5),
           sort_order: nextOrder,
+          is_tracked: true,
+          updated_at: nowIso(),
         });
         nextOrder += 1;
       }
@@ -833,8 +856,10 @@ export const localStore = {
     const weekStart = dayToDateStr(block.start_date, startDay);
     const weekEnd = dayToDateStr(block.start_date, endDay);
 
-    const exercises = store.block_exercises
-      .filter((e) => e.block_id === block.id)
+    const allExercises = store.block_exercises.filter((e) => e.block_id === block.id);
+    const pausedIds = new Set(allExercises.filter((e) => !isExerciseTracked(e)).map((e) => e.id));
+    const exercises = allExercises
+      .filter(isExerciseTracked)
       .sort((a, b) => a.sort_order - b.sort_order);
     const plan = store.plans.find((p) => p.block_id === block.id) || null;
     const targetsByEx = new Map();
@@ -844,7 +869,9 @@ export const localStore = {
       }
     }
 
-    const logs = store.workout_logs.filter((l) => l.block_id === block.id);
+    const logs = store.workout_logs.filter(
+      (l) => l.block_id === block.id && !pausedIds.has(l.block_exercise_id)
+    );
     const logsWeek = logs.filter((l) => l.log_date >= weekStart && l.log_date <= weekEnd);
     const bwLogsWeek = store.bodyweight_logs.filter(
       (b) => b.block_id === block.id && b.log_date >= weekStart && b.log_date <= weekEnd
@@ -1001,8 +1028,10 @@ function computeDashboardFromStore(store, blockId, todayStr = todayIso()) {
   const dur = timeMeta.total_days;
   const currentWeek = timeMeta.week_number;
 
-  const exercises = store.block_exercises
-    .filter((e) => e.block_id === block.id)
+  const blockExercises = store.block_exercises.filter((e) => e.block_id === block.id);
+  const pausedIds = new Set(blockExercises.filter((e) => !isExerciseTracked(e)).map((e) => e.id));
+  const exercises = blockExercises
+    .filter(isExerciseTracked)
     .sort((a, b) => a.sort_order - b.sort_order);
   const plan = store.plans.find((p) => p.block_id === block.id) || null;
   const targetsByEx = new Map();
@@ -1013,7 +1042,7 @@ function computeDashboardFromStore(store, blockId, todayStr = todayIso()) {
   }
 
   const logs = store.workout_logs
-    .filter((l) => l.block_id === block.id)
+    .filter((l) => l.block_id === block.id && !pausedIds.has(l.block_exercise_id))
     .sort((a, b) => (a.log_date !== b.log_date ? a.log_date.localeCompare(b.log_date) : String(a.created_at).localeCompare(String(b.created_at))));
   const bwLogs = store.bodyweight_logs
     .filter((b) => b.block_id === block.id)
@@ -1178,8 +1207,10 @@ function computeChartsFromStore(store, blockId, todayStr = todayIso()) {
   const timeMeta = blockTimeMeta(block, todayStr);
   const dur = timeMeta.total_days;
 
-  const exercises = store.block_exercises
-    .filter((e) => e.block_id === block.id)
+  const blockExercises = store.block_exercises.filter((e) => e.block_id === block.id);
+  const pausedIds = new Set(blockExercises.filter((e) => !isExerciseTracked(e)).map((e) => e.id));
+  const exercises = blockExercises
+    .filter(isExerciseTracked)
     .sort((a, b) => a.sort_order - b.sort_order);
   const plan = store.plans.find((p) => p.block_id === block.id) || null;
   const targetsByEx = new Map();
