@@ -1,9 +1,9 @@
-const CACHE_NAME = "pairlift-shell-v12";
+const CACHE_NAME = "pairlift-shell-v13";
 const SHELL_ASSETS = [
   "./",
   "./index.html",
   "./manifest.webmanifest",
-  "./css/styles.css?v=12",
+  "./css/styles.css?v=13",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
   "./icons/icon.svg",
@@ -25,7 +25,7 @@ const SHELL_ASSETS = [
   "./assets/companions/gorilla-squat.gif",
   "./assets/companions/gorilla-bench.gif",
   "./assets/companions/gorilla-deadlift.gif",
-  "./js/app.js?v=12",
+  "./js/app.js?v=13",
   "./js/api.js",
   "./js/cloud.js",
   "./js/localStore.js",

@@ -2249,7 +2249,7 @@ select {
 
 .plan-ex-controls {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 8px;
   width: 100%;
   min-width: 0;
@@ -2346,4 +2346,9 @@ select {
 
 .card-paused .plan-ex-title strong {
   color: var(--text-muted);
+}
+
+/* Keep the HTML [hidden] attribute authoritative over display:flex/grid component rules */
+[hidden] {
+  display: none !important;
 }
