@@ -12,9 +12,6 @@ function defaultWeightsForSlug(slug) {
   if (slug === "squat") return { start: 60, goal: 120, inc: 2.5 };
   if (slug === "bench") return { start: 50, goal: 100, inc: 2.5 };
   if (slug === "deadlift") return { start: 80, goal: 160, inc: 2.5 };
-  if (slug === "ohp") return { start: 30, goal: 60, inc: 1.25 };
-  if (slug === "pullup") return { start: 10, goal: 25, inc: 1.25 };
-  if (slug === "row") return { start: 40, goal: 70, inc: 1.25 };
   return { start: 40, goal: 80, inc: 2.5 };
 }
 

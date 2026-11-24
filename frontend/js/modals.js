@@ -421,14 +421,9 @@ export function openBodyweightModal(onSaved = null) {
 
 export function openCreateBlockModal(onDone) {
   const exercises = [
-    { name: "Squat", default_increment: 2.5 },
-    { name: "Bench", default_increment: 2.5 },
-    { name: "Deadlift", default_increment: 2.5 },
-  ];
-  const extras = [
-    { name: "OHP", default_increment: 1.25 },
-    { name: "Pullup", default_increment: 1.25 },
-    { name: "Row", default_increment: 1.25 },
+    { name: "Squat", default_increment: 2.5, is_tracked: true },
+    { name: "Bench", default_increment: 2.5, is_tracked: true },
+    { name: "Deadlift", default_increment: 2.5, is_tracked: true },
   ];
 
   mountModal(
@@ -463,20 +458,8 @@ export function openCreateBlockModal(onDone) {
         </label>
 
         <div class="form-field">
-          <label>Tracked Exercises (Big 3 by default)</label>
+          <label>Powerlifting Lifts</label>
           <div id="cb-ex-list" style="display:flex;flex-direction:column;gap:6px;"></div>
-          <div class="row-inline" style="flex-wrap:wrap;margin-top:4px;">
-            ${extras
-              .map(
-                (x) =>
-                  `<button type="button" class="pill-btn" data-add-preset="${escapeHtml(x.name)}" data-inc="${x.default_increment}">+ ${escapeHtml(x.name)}</button>`
-              )
-              .join("")}
-          </div>
-          <div class="row-inline" style="margin-top:6px;">
-            <input id="cb-custom-ex" type="text" placeholder="Custom lift (e.g. RDL, Dip)" />
-            <button type="button" id="cb-add-custom" class="btn btn-secondary btn-sm">Add</button>
-          </div>
         </div>
 
         <button type="submit" class="btn btn-primary btn-block">Create Block</button>
@@ -484,50 +467,27 @@ export function openCreateBlockModal(onDone) {
     `,
     (root) => {
       const listEl = root.querySelector("#cb-ex-list");
-      const renderExList = () => {
-        listEl.innerHTML = exercises
-          .map(
-            (ex, i) => `
-            <div class="row-between card-subtle" style="padding:8px 10px;">
+      listEl.innerHTML = exercises
+        .map(
+          (ex, i) => `
+          <div class="row-between card-subtle" style="padding:8px 10px;gap:10px;">
+            <span class="row-inline" style="gap:10px;min-width:0;">
+              ${companionArtHtml(ex.name, "xs")}
               <span><strong>${escapeHtml(ex.name)}</strong> <span class="muted small">(step ${ex.default_increment} kg)</span></span>
-              ${
-                exercises.length > 1
-                  ? `<button type="button" class="btn-ghost btn-sm" data-rm-ex="${i}">✕</button>`
-                  : ""
-              }
-            </div>
-          `
-          )
-          .join("");
-        for (const btn of listEl.querySelectorAll("[data-rm-ex]")) {
-          btn.addEventListener("click", () => {
-            exercises.splice(Number(btn.getAttribute("data-rm-ex")), 1);
-            renderExList();
-          });
-        }
-      };
-      renderExList();
-
-      for (const btn of root.querySelectorAll("[data-add-preset]")) {
-        btn.addEventListener("click", () => {
-          const name = btn.getAttribute("data-add-preset");
-          const inc = Number(btn.getAttribute("data-inc"));
-          if (!exercises.some((x) => x.name.toLowerCase() === name.toLowerCase())) {
-            exercises.push({ name, default_increment: inc });
-            renderExList();
-          }
+            </span>
+            <label class="toggle-switch">
+              <input type="checkbox" role="switch" data-cb-track="${i}" checked aria-label="Track ${escapeHtml(ex.name)}" />
+              <span class="toggle-track" aria-hidden="true"></span>
+            </label>
+          </div>
+        `
+        )
+        .join("");
+      for (const inp of listEl.querySelectorAll("[data-cb-track]")) {
+        inp.addEventListener("change", () => {
+          exercises[Number(inp.getAttribute("data-cb-track"))].is_tracked = inp.checked;
         });
       }
-
-      root.querySelector("#cb-add-custom").addEventListener("click", () => {
-        const inp = root.querySelector("#cb-custom-ex");
-        const val = inp.value.trim();
-        if (val && !exercises.some((x) => x.name.toLowerCase() === val.toLowerCase())) {
-          exercises.push({ name: val, default_increment: 2.5 });
-          inp.value = "";
-          renderExList();
-        }
-      });
 
       root.querySelector("#cb-form").addEventListener("submit", async (e) => {
         e.preventDefault();

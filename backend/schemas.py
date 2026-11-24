@@ -19,6 +19,7 @@ class LoginRequest(BaseModel):
 class BlockExerciseInput(BaseModel):
     name: str = Field(..., min_length=1, max_length=40)
     default_increment: float = Field(default=2.5, gt=0, le=50)
+    is_tracked: bool = True
 
 
 class BlockCreateRequest(BaseModel):

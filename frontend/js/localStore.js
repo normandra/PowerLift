@@ -268,7 +268,6 @@ function seedSampleBlock(store) {
     ["Squat", "squat", 2.5, 0],
     ["Bench", "bench", 2.5, 1],
     ["Deadlift", "deadlift", 2.5, 2],
-    ["OHP", "ohp", 1.25, 3],
   ];
   const exIds = {};
   for (const [name, slug, inc, sort_order] of exSpec) {
@@ -302,7 +301,6 @@ function seedSampleBlock(store) {
     ["squat", 60, 120, 2.5],
     ["bench", 50, 100, 2.5],
     ["deadlift", 80, 160, 2.5],
-    ["ohp", 30, 60, 1.25],
   ];
   for (const [slug, sw, gw, inc] of targetsSpec) {
     store.exercise_targets.push({
@@ -322,7 +320,6 @@ function seedSampleBlock(store) {
     ["bench", 1, 50, 75, [{ weight: 50, reps: 5 }, { weight: 50, reps: 5 }], 0, "Block opener!"],
     ["squat", 1, 60, 90, [{ weight: 60, reps: 5 }, { weight: 60, reps: 5 }], 0, ""],
     ["deadlift", 3, 85, 120, [{ weight: 85, reps: 5 }], 0, "Moved smoothly"],
-    ["ohp", 5, 32.5, null, [{ weight: 32.5, reps: 5 }, { weight: 32.5, reps: 5 }], 0, "Solid overhead stability"],
     ["bench", 8, 57.5, 80, [{ weight: 57.5, reps: 5 }, { weight: 57.5, reps: 5 }], 1, "Beat Day 8 target!"],
     ["squat", 10, 70, 97.5, [{ weight: 70, reps: 5 }, { weight: 70, reps: 5 }], 1, "Felt super stable"],
     ["deadlift", 12, 100, 130, [{ weight: 100, reps: 4 }], 1, "Clean pulls off the floor"],
@@ -560,7 +557,7 @@ export const localStore = {
         slug,
         default_increment: Number(ex.default_increment || 2.5),
         sort_order: idx,
-        is_tracked: true,
+        is_tracked: ex.is_tracked !== false,
         updated_at: now,
       });
     });

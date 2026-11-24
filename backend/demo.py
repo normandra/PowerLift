@@ -57,7 +57,6 @@ def ensure_demo_user(conn: sqlite3.Connection) -> Dict[str, Any]:
         ("Squat", "squat", 2.5, 0),
         ("Bench", "bench", 2.5, 1),
         ("Deadlift", "deadlift", 2.5, 2),
-        ("OHP", "ohp", 1.25, 3),
     ]
     ex_ids: Dict[str, int] = {}
     for name, slug, inc, sort_ord in exercises_spec:
@@ -84,7 +83,6 @@ def ensure_demo_user(conn: sqlite3.Connection) -> Dict[str, Any]:
         ("squat", "linear", "working_weight", 60.0, 120.0, 2.5, {}),
         ("bench", "linear", "working_weight", 50.0, 100.0, 2.5, {}),
         ("deadlift", "linear", "working_weight", 80.0, 160.0, 2.5, {}),
-        ("ohp", "linear", "working_weight", 30.0, 60.0, 1.25, {}),
     ]
     for slug, ptype, metric, sw, gw, inc, cfg in targets:
         conn.execute(
@@ -104,7 +102,6 @@ def ensure_demo_user(conn: sqlite3.Connection) -> Dict[str, Any]:
         ("bench", 0, 50.0, 75.0, [{"weight": 50, "reps": 5}, {"weight": 50, "reps": 5}], 0, "Block opener!"),
         ("squat", 0, 60.0, 90.0, [{"weight": 60, "reps": 5}, {"weight": 60, "reps": 5}], 0, ""),
         ("deadlift", 2, 85.0, 120.0, [{"weight": 85, "reps": 5}], 0, "Moved smoothly"),
-        ("ohp", 4, 32.5, None, [{"weight": 32.5, "reps": 5}, {"weight": 32.5, "reps": 5}], 0, "Solid overhead stability"),
         ("bench", 7, 57.5, 80.0, [{"weight": 57.5, "reps": 5}, {"weight": 57.5, "reps": 5}], 1, "Beat Day 8 target!"),
         ("squat", 9, 70.0, 97.5, [{"weight": 70, "reps": 5}, {"weight": 70, "reps": 5}], 1, "Felt super stable"),
         ("deadlift", 11, 100.0, 130.0, [{"weight": 100, "reps": 4}], 1, "Clean pulls off the floor"),

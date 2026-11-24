@@ -175,8 +175,33 @@ def test_demo_endpoint(tmp_path, monkeypatch):
     assert len(data["blocks"]) == 1
     bid = data["blocks"][0]["id"]
     dash = client.get(f"/api/blocks/{bid}/dashboard").json()
-    assert len(dash["today_cards"]) == 4
+    assert {c["name"] for c in dash["today_cards"]} == {"Squat", "Bench", "Deadlift"}
     assert dash["stats"]["sessions_logged"] > 0
+
+
+def test_create_block_persists_initial_is_tracked_flags(tmp_path, monkeypatch):
+    client = _make_client(tmp_path, monkeypatch)
+    res = client.post(
+        "/api/auth/register",
+        json={"username": "tracker", "display_name": "Tracker", "password": "secret"},
+    )
+    assert res.status_code == 201
+    blk = client.post(
+        "/api/blocks",
+        json={
+            "name": "Focus Block",
+            "start_date": "2026-11-01",
+            "duration_weeks": 8,
+            "exercises": [
+                {"name": "Squat", "default_increment": 2.5, "is_tracked": True},
+                {"name": "Bench", "default_increment": 2.5, "is_tracked": False},
+                {"name": "Deadlift", "default_increment": 2.5},
+            ],
+        },
+    )
+    assert blk.status_code == 201
+    exercises = {e["name"]: e["is_tracked"] for e in blk.json()["exercises"]}
+    assert exercises == {"Squat": True, "Bench": False, "Deadlift": True}
 
 
 def test_legacy_group_schema_migrates_cleanly(tmp_path, monkeypatch):

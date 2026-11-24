@@ -106,7 +106,7 @@ export function renderProgressView(containerEl, actions) {
 
   containerEl.querySelector("#c-share-card").addEventListener("click", () => {
     openShareModal({
-      mode: isBw ? "summary" : "spotlight",
+      mode: "summary",
       exerciseSlug: selectedEx?.slug || exercises[0]?.slug,
     });
   });

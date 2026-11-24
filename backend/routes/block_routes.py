@@ -114,11 +114,15 @@ def create_block(
 
     exercises_in = payload.exercises
     if not exercises_in:
-        ex_list = [(n, inc) for n, inc in DEFAULT_BIG_THREE]
+        ex_list = [(n, inc, True) for n, inc in DEFAULT_BIG_THREE]
     else:
-        ex_list = [(ex.name.strip(), float(ex.default_increment)) for ex in exercises_in if ex.name.strip()]
+        ex_list = [
+            (ex.name.strip(), float(ex.default_increment), bool(ex.is_tracked))
+            for ex in exercises_in
+            if ex.name.strip()
+        ]
         if not ex_list:
-            ex_list = [(n, inc) for n, inc in DEFAULT_BIG_THREE]
+            ex_list = [(n, inc, True) for n, inc in DEFAULT_BIG_THREE]
 
     with get_conn() as conn:
         cur = conn.execute(
@@ -141,7 +145,7 @@ def create_block(
         block_id = cur.lastrowid
 
         seen_slugs = set()
-        for idx, (ex_name, inc) in enumerate(ex_list):
+        for idx, (ex_name, inc, tracked) in enumerate(ex_list):
             base_slug = _slugify(ex_name)
             slug = base_slug
             counter = 2
@@ -151,10 +155,10 @@ def create_block(
             seen_slugs.add(slug)
             conn.execute(
                 """
-                INSERT INTO block_exercises(block_id, name, slug, default_increment, sort_order)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO block_exercises(block_id, name, slug, default_increment, sort_order, is_tracked)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (block_id, ex_name, slug, inc, idx),
+                (block_id, ex_name, slug, inc, idx, 1 if tracked else 0),
             )
 
         block = conn.execute("SELECT * FROM blocks WHERE id = ?", (block_id,)).fetchone()

@@ -55,7 +55,7 @@ export function renderTodayView(containerEl, actions) {
     containerEl.innerHTML = `
       <div class="card hero-card" style="display:flex;flex-direction:column;gap:12px;">
         <h2 style="margin:0;">Welcome, ${escapeHtml(state.user?.display_name)}!</h2>
-        <p class="muted" style="margin:0;">Create your first training block (e.g. 14 weeks), pick the lifts you want to track (Squat, Bench, Deadlift by default), and configure your daily strength targets.</p>
+        <p class="muted" style="margin:0;">Create your first training block (e.g. 14 weeks), track the three powerlifting lifts (Squat, Bench & Deadlift), and configure your daily strength targets.</p>
         <div>
           <button class="btn btn-primary" id="t-create-blk">Create Training Block</button>
         </div>
